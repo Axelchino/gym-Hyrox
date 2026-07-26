@@ -13,27 +13,30 @@ import { getGuestProfile } from '../data/guestMockData';
 export function useUserProfile(userId: string | null) {
   const { isGuest } = useAuth();
 
-  // GUEST MODE: Return mock profile instantly
+  // Always call useQuery (rules-of-hooks — the hook itself can't be
+  // conditional), and just disable it in guest mode. The guest-mode
+  // override happens on the *result*, not by skipping the hook call.
+  const query = useQuery({
+    queryKey: ['userProfile', userId],
+    queryFn: getUserProfile,
+    enabled: !!userId && !isGuest, // Only fetch when logged in
+    staleTime: 5 * 60 * 1000, // 5 minutes - consider data fresh
+    gcTime: 30 * 60 * 1000, // 30 minutes - keep in cache
+    refetchOnWindowFocus: false, // Don't refetch on tab focus
+    refetchOnMount: false, // Don't refetch on component mount if cached
+  });
+
   if (isGuest) {
     return {
       data: getGuestProfile(),
       isLoading: false,
       isError: false,
       error: null,
-      refetch: () => Promise.resolve({ data: getGuestProfile() }),
+      refetch: query.refetch,
     } as any;
   }
 
-  // REAL USER: Normal React Query flow
-  return useQuery({
-    queryKey: ['userProfile', userId],
-    queryFn: getUserProfile,
-    enabled: !!userId, // Only fetch when user is logged in
-    staleTime: 5 * 60 * 1000, // 5 minutes - consider data fresh
-    gcTime: 30 * 60 * 1000, // 30 minutes - keep in cache
-    refetchOnWindowFocus: false, // Don't refetch on tab focus
-    refetchOnMount: false, // Don't refetch on component mount if cached
-  });
+  return query;
 }
 
 /**

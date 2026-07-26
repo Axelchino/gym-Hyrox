@@ -23,23 +23,29 @@ const guestProgress = (userId: string): HyroxProgress => ({
 export function useHyroxProgress(userId: string | null | undefined, options: { isPartner?: boolean } = {}): HyroxProgressQueryResult {
   const { isGuest } = useAuth();
 
+  // useQuery must always be called (rules-of-hooks) — guest/no-userId
+  // disables it via `enabled` and overrides the result below, it never
+  // skips the call itself.
+  const query = useQuery({
+    queryKey: ['hyroxProgress', userId],
+    queryFn: () => getProgress(userId as string),
+    enabled: !isGuest && !!userId,
+    staleTime: options.isPartner ? 30 * 1000 : 5 * 60 * 1000,
+    refetchOnWindowFocus: true,
+    refetchInterval: options.isPartner ? 30 * 1000 : false,
+  });
+
   if (isGuest || !userId) {
     return {
       data: userId ? guestProgress(userId) : undefined,
       isLoading: false,
       isError: false,
       error: null,
-      refetch: (() => Promise.resolve({ data: undefined })) as HyroxProgressQueryResult['refetch'],
+      refetch: query.refetch,
     };
   }
 
-  return useQuery({
-    queryKey: ['hyroxProgress', userId],
-    queryFn: () => getProgress(userId),
-    staleTime: options.isPartner ? 30 * 1000 : 5 * 60 * 1000,
-    refetchOnWindowFocus: true,
-    refetchInterval: options.isPartner ? 30 * 1000 : false,
-  });
+  return query;
 }
 
 export function useSaveHyroxProgress(userId: string | null | undefined) {

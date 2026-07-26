@@ -4,6 +4,7 @@ import { Users, Copy, LogOut, Download, Printer } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useThemeTokens } from '../utils/themeHelpers';
 import { useHyroxProgress, useSaveHyroxProgress } from '../hooks/useHyroxProgress';
+import { useHyroxGuestProgress } from '../hooks/useHyroxGuestProgress';
 import { useHyroxGroup, useInvalidateHyroxGroup } from '../hooks/useHyroxGroup';
 import { createGroup, joinGroup, leaveGroup, isHyroxAdmin } from '../services/hyroxService';
 import {
@@ -72,14 +73,22 @@ export default function Hyrox() {
   const [groupErr, setGroupErr] = useState('');
 
   const { data: progress } = useHyroxProgress(user?.id);
-  const saveProgress = useSaveHyroxProgress(user?.id);
+  const saveProgressRemote = useSaveHyroxProgress(user?.id);
+  const { data: guestProgress, save: saveGuestProgress } = useHyroxGuestProgress();
   const { data: groupInfo, isLoading: groupLoading, refetch: refetchGroup } = useHyroxGroup();
   const invalidateGroup = useInvalidateHyroxGroup();
 
-  const done = progress?.done ?? {};
-  const times = progress?.times ?? { Mon: '17:30', Tue: '17:30', Wed: '17:30', Thu: '17:30', Fri: '17:30', Sat: '08:00', Sun: '08:00' };
-  const benchmarks = progress?.benchmarks ?? [];
-  const stations = progress?.stations ?? {};
+  // Signed-in: Supabase-backed (syncs across devices, visible to a group
+  // partner). Guest: localStorage-backed, same as hyrox-planner.jsx always
+  // worked — no account required to actually use the tracker.
+  const done = user ? (progress?.done ?? {}) : guestProgress.done;
+  const times = user ? (progress?.times ?? guestProgress.times) : guestProgress.times;
+  const benchmarks = user ? (progress?.benchmarks ?? []) : guestProgress.benchmarks;
+  const stations = user ? (progress?.stations ?? {}) : guestProgress.stations;
+
+  const saveProgress = (patch: Partial<Pick<typeof guestProgress, 'done' | 'times' | 'benchmarks' | 'stations'>>) => {
+    if (user) { void saveProgressRemote(patch); } else { saveGuestProgress(patch); }
+  };
 
   const partner = groupInfo?.members.find((m) => m.userId !== user?.id);
   const { data: partnerProgress } = useHyroxProgress(partner?.userId, { isPartner: true });
@@ -92,12 +101,10 @@ export default function Hyrox() {
   const curWeek = today.week;
 
   const toggleDone = (date: string) => {
-    if (!user) return;
     saveProgress({ done: { ...done, [date]: !done[date] } });
   };
 
   const setTime = (dow: string, v: string) => {
-    if (!user) return;
     saveProgress({ times: { ...times, [dow]: v } });
   };
 
@@ -174,7 +181,7 @@ export default function Hyrox() {
 
       {isGuest && (
         <div className="no-print rounded-lg p-3 mb-4 text-sm" style={{ background: tokens.chip.background, color: tokens.chip.text, border: `1px solid ${tokens.chip.border}` }}>
-          Sign in to track your sessions and train with a partner in a group.{' '}
+          You're tracking locally on this device. Sign in to sync across devices and train with a partner in a group.{' '}
           <button className="font-semibold underline" onClick={() => navigate('/auth')}>Sign in</button>
         </div>
       )}
@@ -207,7 +214,7 @@ export default function Hyrox() {
             </div>
             <div className="text-2xl font-black text-primary my-2">{today.title}</div>
             {today.detail && <div className="text-sm text-secondary">{today.detail}</div>}
-            {today.type !== 'rest' && user && (
+            {today.type !== 'rest' && (
               <button
                 onClick={() => toggleDone(today.date)}
                 className="w-full mt-3 py-3 rounded-md font-bold text-sm"
@@ -236,7 +243,7 @@ export default function Hyrox() {
           <div className="mt-4">
             <div className="text-sm font-black text-primary mb-1">NEXT 7 DAYS</div>
             {ALL_DAYS.filter((d) => d.date >= todayISO).slice(0, 7).map((d) => (
-              <DayRow key={d.date} d={d} showWeek done={!!done[d.date]} onToggle={user ? toggleDone : undefined} />
+              <DayRow key={d.date} d={d} showWeek done={!!done[d.date]} onToggle={toggleDone} />
             ))}
           </div>
         </div>
@@ -252,7 +259,7 @@ export default function Hyrox() {
                 <label key={dw} className="text-[11px] text-secondary">
                   {dw}
                   <input
-                    type="time" disabled={!user} value={times[dw]}
+                    type="time" value={times[dw]}
                     onChange={(e) => setTime(dw, e.target.value)}
                     className="w-full mt-0.5 px-1.5 py-1 rounded text-xs"
                     style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)' }}
@@ -284,7 +291,7 @@ export default function Hyrox() {
                     <span className="font-bold text-primary">Week 0 — Prep (Jul 23–26)</span><span className="text-primary">{open ? '−' : '+'}</span>
                   </button>
                   {printMode && <div className="font-black text-sm text-primary my-2">WEEK 0 — PREP</div>}
-                  {open && <div className="px-1">{ALL_DAYS.filter((d) => d.week === 0).map((d) => <DayRow key={d.date} d={d} done={!!done[d.date]} onToggle={user ? toggleDone : undefined} />)}</div>}
+                  {open && <div className="px-1">{ALL_DAYS.filter((d) => d.week === 0).map((d) => <DayRow key={d.date} d={d} done={!!done[d.date]} onToggle={toggleDone} />)}</div>}
                 </div>
               );
             }
@@ -306,7 +313,7 @@ export default function Hyrox() {
                   <span className="text-primary">{open ? '−' : '+'}</span>
                 </button>
                 {printMode && <div className="font-black text-sm text-primary my-2">WEEK {w} · {ph.name} · {wk.km} km {wk.deload ? '· DELOAD' : ''}</div>}
-                {open && <div className="px-1">{ALL_DAYS.filter((d) => d.week === w).map((d) => <DayRow key={d.date} d={d} done={!!done[d.date]} onToggle={user ? toggleDone : undefined} />)}</div>}
+                {open && <div className="px-1">{ALL_DAYS.filter((d) => d.week === w).map((d) => <DayRow key={d.date} d={d} done={!!done[d.date]} onToggle={toggleDone} />)}</div>}
               </div>
             );
           })}
@@ -325,8 +332,7 @@ export default function Hyrox() {
               <input type="text" placeholder="Time e.g. 26:41" value={bmDraft.time} onChange={(e) => setBmDraft({ ...bmDraft, time: e.target.value })}
                 className="flex-1 min-w-[100px] px-2 py-2 rounded text-sm" style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)' }} />
               <button
-                disabled={!user}
-                onClick={() => { if (!bmDraft.time || !user) return; saveProgress({ benchmarks: [...benchmarks, { ...bmDraft, date: todayISO }] }); setBmDraft({ event: '5K', time: '' }); }}
+                onClick={() => { if (!bmDraft.time) return; saveProgress({ benchmarks: [...benchmarks, { ...bmDraft, date: todayISO }] }); setBmDraft({ event: '5K', time: '' }); }}
                 className="px-4 py-2 rounded font-bold text-sm" style={{ background: tokens.button.primaryBg, color: tokens.button.primaryText, opacity: user ? 1 : 0.5 }}
               >
                 Log
@@ -358,7 +364,7 @@ export default function Hyrox() {
               <div key={s} className="flex justify-between items-center py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                 <span className="text-sm font-semibold text-primary">{s}</span>
                 <input
-                  type="text" placeholder="—:—" disabled={!user}
+                  type="text" placeholder="—:—"
                   value={stationDraft[s] ?? stations[s] ?? ''}
                   onChange={(e) => setStationDraft({ ...stationDraft, [s]: e.target.value })}
                   onBlur={(e) => { if (user) saveProgress({ stations: { ...stations, [s]: e.target.value } }); }}
@@ -485,7 +491,7 @@ export default function Hyrox() {
               const key = 'shop:' + s;
               return (
                 <label key={s} className="flex gap-2.5 items-center py-1.5 cursor-pointer">
-                  <input type="checkbox" checked={!!done[key]} disabled={!user} onChange={() => user && toggleDone(key)} style={{ width: 16, height: 16 }} />
+                  <input type="checkbox" checked={!!done[key]} onChange={() => toggleDone(key)} style={{ width: 16, height: 16 }} />
                   <span className="text-sm text-primary" style={{ textDecoration: done[key] ? 'line-through' : 'none', opacity: done[key] ? 0.6 : 1 }}>{s}</span>
                 </label>
               );

@@ -17,23 +17,28 @@ type HyroxGroupQueryResult = Pick<UseQueryResult<MyGroupResult, Error | null>, '
 export function useHyroxGroup(): HyroxGroupQueryResult {
   const { user, isGuest } = useAuth();
 
+  // useQuery must always be called (rules-of-hooks) — guest mode disables
+  // it via `enabled` and overrides the result below, it never skips the
+  // call itself.
+  const query = useQuery({
+    queryKey: ['hyroxGroup', user?.id],
+    queryFn: getMyGroup,
+    enabled: !!user && !isGuest,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: true,
+  });
+
   if (isGuest) {
     return {
       data: null,
       isLoading: false,
       isError: false,
       error: null,
-      refetch: (() => Promise.resolve({ data: null })) as HyroxGroupQueryResult['refetch'],
+      refetch: query.refetch,
     };
   }
 
-  return useQuery({
-    queryKey: ['hyroxGroup', user?.id],
-    queryFn: getMyGroup,
-    enabled: !!user,
-    staleTime: 60 * 1000,
-    refetchOnWindowFocus: true,
-  });
+  return query;
 }
 
 export function useInvalidateHyroxGroup() {
