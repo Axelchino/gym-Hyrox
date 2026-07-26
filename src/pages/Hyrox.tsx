@@ -367,7 +367,7 @@ export default function Hyrox() {
                   type="text" placeholder="—:—"
                   value={stationDraft[s] ?? stations[s] ?? ''}
                   onChange={(e) => setStationDraft({ ...stationDraft, [s]: e.target.value })}
-                  onBlur={(e) => { if (user) saveProgress({ stations: { ...stations, [s]: e.target.value } }); }}
+                  onBlur={(e) => saveProgress({ stations: { ...stations, [s]: e.target.value } })}
                   className="w-20 text-right px-1.5 py-1 rounded text-sm font-mono" style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)' }}
                 />
               </div>
