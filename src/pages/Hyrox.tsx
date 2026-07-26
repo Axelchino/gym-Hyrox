@@ -96,6 +96,11 @@ export default function Hyrox() {
     saveProgress({ done: { ...done, [date]: !done[date] } });
   };
 
+  const setTime = (dow: string, v: string) => {
+    if (!user) return;
+    saveProgress({ times: { ...times, [dow]: v } });
+  };
+
   const download = (content: string, name: string) => {
     const blob = new Blob([content], { type: 'text/calendar' });
     const a = document.createElement('a');
@@ -241,6 +246,20 @@ export default function Hyrox() {
       {(tab === 'plan' || printMode) && (
         <div>
           <div className="no-print rounded-lg p-3 mb-3.5" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
+            <div className="text-sm font-black text-primary mb-2">YOUR TRAINING TIMES</div>
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-3">
+              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((dw) => (
+                <label key={dw} className="text-[11px] text-secondary">
+                  {dw}
+                  <input
+                    type="time" disabled={!user} value={times[dw]}
+                    onChange={(e) => setTime(dw, e.target.value)}
+                    className="w-full mt-0.5 px-1.5 py-1 rounded text-xs"
+                    style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)' }}
+                  />
+                </label>
+              ))}
+            </div>
             <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => download(makeICS(ALL_DAYS, times), 'hyrox-19-weeks.ics')}
@@ -253,6 +272,7 @@ export default function Hyrox() {
                 <Printer size={16} /> Print
               </button>
             </div>
+            <div className="text-xs text-secondary mt-1.5">In Google Calendar: Settings → Import &amp; export → Import the .ics file.</div>
           </div>
 
           {[...Array(20).keys()].map((w) => {
