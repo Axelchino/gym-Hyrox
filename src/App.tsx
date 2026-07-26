@@ -10,6 +10,8 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Dashboard1 = lazy(() => import('./pages/Dashboard1'));
 const WorkoutLogger = lazy(() => import('./pages/WorkoutLogger'));
 const Program = lazy(() => import('./pages/Program'));
+const Hyrox = lazy(() => import('./pages/Hyrox'));
+const HyroxAdmin = lazy(() => import('./pages/HyroxAdmin'));
 const Analytics = lazy(() => import('./pages/Analytics'));
 const ExerciseLibrary = lazy(() => import('./pages/ExerciseLibrary'));
 const Profile = lazy(() => import('./pages/Profile'));
@@ -50,6 +52,8 @@ function App() {
               <Route index element={<Dashboard />} />
               <Route path="workout" element={<WorkoutLogger />} />
               <Route path="program" element={<Program />} />
+              <Route path="hyrox" element={<Hyrox />} />
+              <Route path="hyrox/admin" element={<HyroxAdmin />} />
               <Route path="analytics" element={<Analytics />} />
               <Route path="exercises" element={<ExerciseLibrary />} />
               <Route path="profile" element={<Profile />} />

@@ -68,6 +68,7 @@ export function Header() {
     { to: '/', label: 'Home' },
     { to: '/analytics', label: 'Progress' },
     { to: '/program', label: 'Program' },
+    { to: '/hyrox', label: 'Hyrox' },
     { to: '/exercises', label: 'Exercises' },
   ];
 
