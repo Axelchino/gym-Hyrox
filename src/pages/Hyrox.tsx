@@ -53,21 +53,26 @@ const RECOVERY_DESCRIPTIONS: Record<RecoveryOption, string> = {
 type Tab = 'today' | 'plan' | 'track' | 'group' | 'race' | 'setup';
 
 function DayRow({
-  d, showWeek, done, onToggle,
-}: { d: HyroxDay; showWeek?: boolean; done: boolean; onToggle?: (date: string) => void }) {
+  d, showWeek, done, onToggle, printMode,
+}: { d: HyroxDay; showWeek?: boolean; done: boolean; onToggle?: (date: string) => void; printMode?: boolean }) {
+  // In print, every day gets a real checkbox to physically tick off with a
+  // pen — rest days aren't excluded there the way the on-screen toggle
+  // excludes them (nothing to "mark done" digitally for a rest day, but on
+  // paper you still want to check it off as you go through the week).
+  const checkable = printMode || (!!onToggle && d.type !== 'rest');
   return (
     <div className="flex gap-3 py-2.5 items-start" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
       <button
-        onClick={() => d.type !== 'rest' && onToggle?.(d.date)}
+        onClick={() => checkable && !printMode && onToggle?.(d.date)}
         aria-label="mark done"
-        disabled={!onToggle || d.type === 'rest'}
+        disabled={!checkable || printMode}
         className="rounded flex items-center justify-center text-xs font-black shrink-0"
         style={{
           width: 26, height: 26,
-          border: `2px solid ${d.type === 'rest' ? 'var(--border-medium)' : 'var(--text-primary)'}`,
+          border: `2px solid ${printMode ? '#131316' : checkable ? 'var(--text-primary)' : 'var(--border-medium)'}`,
           background: done ? '#FFD500' : 'transparent',
           color: '#131316',
-          cursor: onToggle && d.type !== 'rest' ? 'pointer' : 'default',
+          cursor: checkable && !printMode ? 'pointer' : 'default',
         }}
       >
         {done ? '✓' : ''}
@@ -76,7 +81,7 @@ function DayRow({
         <div className="flex gap-2 items-baseline flex-wrap">
           <span className="text-[11px] text-secondary font-mono">{pretty(d.date)}{showWeek ? ` · W${d.week}` : ''}</span>
           <span
-            className="text-[10px] font-bold px-1.5 py-0.5 rounded text-white"
+            className="badge-chip text-[10px] font-bold px-1.5 py-0.5 rounded text-white"
             style={{ background: TYPE_COLOR[d.type] }}
           >
             {TYPE_LABEL[d.type]}
@@ -249,8 +254,32 @@ export default function Hyrox() {
   const partnerDoneCount = partnerProgress ? Object.values(partnerProgress.done).filter(Boolean).length : 0;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 pb-16 pt-4">
-      <style>{`@media print { .no-print { display: none !important; } body, div { background: #fff !important; } }`}</style>
+    <div className="hyrox-print-area max-w-3xl mx-auto px-4 pb-16 pt-4">
+      <style>{`
+        @media print {
+          /* Hide the surrounding app chrome (header/nav/banners) entirely —
+             only this component's content should end up on the page. */
+          html, body { background: #fff !important; }
+          body * { visibility: hidden; }
+          .hyrox-print-area, .hyrox-print-area * { visibility: visible; }
+          .hyrox-print-area {
+            position: absolute; left: 0; top: 0; width: 100%;
+            background: #fff !important;
+          }
+          .no-print { display: none !important; }
+          /* Force real black-on-white regardless of the active theme (dark
+             mode text is light-colored and would be near-invisible here).
+             Excludes .badge-chip so its colored fill survives. */
+          .hyrox-print-area div:not(.badge-chip), .hyrox-print-area span:not(.badge-chip),
+          .hyrox-print-area td, .hyrox-print-area p {
+            color: #131316 !important;
+            background: transparent !important;
+          }
+          .hyrox-print-area * { border-color: #d1d5db !important; }
+          .hyrox-print-area .badge-chip { color: #fff !important; }
+          .hyrox-print-area .week-block { page-break-inside: avoid; margin-bottom: 14px; }
+        }
+      `}</style>
 
       {/* Header card */}
       <div className="no-print flex items-center justify-between rounded-lg p-4 mb-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
@@ -301,7 +330,7 @@ export default function Hyrox() {
           <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
             <div className="flex justify-between items-baseline">
               <span className="text-xs text-secondary font-mono">{pretty(today.date)} · WEEK {today.week} · {today.week ? phaseOf(today.week).name : 'PREP'}</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-white" style={{ background: TYPE_COLOR[today.type] }}>{TYPE_LABEL[today.type]}</span>
+              <span className="badge-chip text-[10px] font-bold px-1.5 py-0.5 rounded text-white" style={{ background: TYPE_COLOR[today.type] }}>{TYPE_LABEL[today.type]}</span>
             </div>
             <div className="text-2xl font-black text-primary my-2">{today.title}</div>
             {today.detail && <div className="text-sm text-secondary">{today.detail}</div>}
@@ -374,12 +403,12 @@ export default function Hyrox() {
             if (w === 0) {
               const open = printMode || openWeek === 0;
               return (
-                <div key={w} className="mb-2">
+                <div key={w} className="mb-2 week-block">
                   <button className="no-print w-full text-left px-3 py-2.5 rounded-md flex justify-between" style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.elevated }} onClick={() => setOpenWeek(open ? null : 0)}>
                     <span className="font-bold text-primary">Week 0 — Prep (Jul 23–26)</span><span className="text-primary">{open ? '−' : '+'}</span>
                   </button>
                   {printMode && <div className="font-black text-sm text-primary my-2">WEEK 0 — PREP</div>}
-                  {open && <div className="px-1">{days.filter((d) => d.week === 0).map((d) => <DayRow key={d.date} d={d} done={!!done[d.date]} onToggle={toggleDone} />)}</div>}
+                  {open && <div className="px-1">{days.filter((d) => d.week === 0).map((d) => <DayRow key={d.date} d={d} done={!!done[d.date]} onToggle={toggleDone} printMode={printMode} />)}</div>}
                 </div>
               );
             }
@@ -388,7 +417,7 @@ export default function Hyrox() {
             const open = printMode || openWeek === w;
             const start = new Date(START); start.setDate(START.getDate() + (w - 1) * 7);
             return (
-              <div key={w} className="mb-2">
+              <div key={w} className="mb-2 week-block">
                 <button
                   className="no-print w-full text-left px-3 py-2.5 rounded-md flex justify-between items-center gap-2"
                   style={{ border: `1px solid ${w === curWeek ? 'var(--text-primary)' : 'var(--border-subtle)'}`, borderLeft: `4px solid ${ph.color}`, background: w === curWeek ? tokens.surface.accent : tokens.surface.elevated }}
@@ -402,7 +431,7 @@ export default function Hyrox() {
                   <span className="text-primary">{open ? '−' : '+'}</span>
                 </button>
                 {printMode && <div className="font-black text-sm text-primary my-2">WEEK {w} · {ph.name} · {wk.km} km {wk.deload ? '· DELOAD' : ''}</div>}
-                {open && <div className="px-1">{days.filter((d) => d.week === w).map((d) => <DayRow key={d.date} d={d} done={!!done[d.date]} onToggle={toggleDone} />)}</div>}
+                {open && <div className="px-1">{days.filter((d) => d.week === w).map((d) => <DayRow key={d.date} d={d} done={!!done[d.date]} onToggle={toggleDone} printMode={printMode} />)}</div>}
               </div>
             );
           })}
