@@ -10,7 +10,7 @@
 import { supabase } from './supabase';
 import { getCurrentUserId } from './supabaseDataService';
 import type { HyroxAdminGroupSummary, HyroxBenchmark, HyroxGroup, HyroxGroupMember, HyroxProgress } from '../types/hyrox';
-import { HYROX_PROGRESS_EMPTY } from '../types/hyrox';
+import { HYROX_PROGRESS_EMPTY, DEFAULT_PILLAR_DAY_MAP, DEFAULT_RECOVERY_CHOICES } from '../types/hyrox';
 import { ALL_DAYS } from '../data/hyroxPlan';
 
 const ADMIN_EMAIL = 'axelcv150@gmail.com';
@@ -33,6 +33,9 @@ function mapProgress(row: any): HyroxProgress {
     times: { ...HYROX_PROGRESS_EMPTY.times, ...(row.times ?? {}) },
     benchmarks: (row.benchmarks ?? []) as HyroxBenchmark[],
     stations: row.stations ?? {},
+    pillarDayMap: { ...DEFAULT_PILLAR_DAY_MAP, ...(row.pillar_day_map ?? {}) },
+    recoveryChoices: { ...DEFAULT_RECOVERY_CHOICES, ...(row.recovery_choices ?? {}) },
+    tier: row.tier ?? 'top5',
     updatedAt: row.updated_at,
   };
 }
@@ -145,12 +148,23 @@ export async function getProgress(userId: string): Promise<HyroxProgress> {
 }
 
 /** Upsert the current user's own progress. Partial patches are merged client-side by the caller. */
-export async function upsertMyProgress(patch: Partial<Pick<HyroxProgress, 'done' | 'times' | 'benchmarks' | 'stations'>>): Promise<void> {
+type ProgressPatch = Partial<Pick<HyroxProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'pillarDayMap' | 'recoveryChoices' | 'tier'>>;
+
+export async function upsertMyProgress(patch: ProgressPatch): Promise<void> {
   const userId = await getCurrentUserId();
+
+  const row: Record<string, unknown> = { user_id: userId, updated_at: new Date().toISOString() };
+  if (patch.done !== undefined) row.done = patch.done;
+  if (patch.times !== undefined) row.times = patch.times;
+  if (patch.benchmarks !== undefined) row.benchmarks = patch.benchmarks;
+  if (patch.stations !== undefined) row.stations = patch.stations;
+  if (patch.pillarDayMap !== undefined) row.pillar_day_map = patch.pillarDayMap;
+  if (patch.recoveryChoices !== undefined) row.recovery_choices = patch.recoveryChoices;
+  if (patch.tier !== undefined) row.tier = patch.tier;
 
   const { error } = await supabase
     .from('hyrox_progress')
-    .upsert({ user_id: userId, ...patch, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+    .upsert(row, { onConflict: 'user_id' });
 
   if (error) {
     console.error('Error saving progress:', error);

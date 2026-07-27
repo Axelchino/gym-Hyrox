@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users, Copy, LogOut, Download, Printer } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,10 +7,15 @@ import { useHyroxProgress, useSaveHyroxProgress } from '../hooks/useHyroxProgres
 import { useHyroxGuestProgress } from '../hooks/useHyroxGuestProgress';
 import { useHyroxGroup, useInvalidateHyroxGroup } from '../hooks/useHyroxGroup';
 import { createGroup, joinGroup, leaveGroup, isHyroxAdmin } from '../services/hyroxService';
+import { TimeWheelPicker } from '../components/hyrox/TimeWheelPicker';
 import {
-  ALL_DAYS, W, phaseOf, TARGETS, RULES, SHOP, STATIONS, RACE_DAY, fmtDate, pretty, makeICS, START,
+  buildPersonalDays, WEEKS_BY_TIER, TARGETS_BY_TIER, TIER_LABEL, TIER_RECOVERY_FLOOR, WEEKDAYS,
+  phaseOf, RULES, SHOP, STATIONS, RACE_DAY, fmtDate, pretty, makeICS, START, WEEK19,
 } from '../data/hyroxPlan';
-import type { HyroxDay, HyroxDayType } from '../types/hyrox';
+import type {
+  HyroxDay, HyroxDayType, HyroxTier, HyroxWeek, PillarRole, RecoveryOption,
+} from '../types/hyrox';
+import { DEFAULT_PILLAR_DAY_MAP, DEFAULT_RECOVERY_CHOICES } from '../types/hyrox';
 
 const TYPE_COLOR: Record<HyroxDayType, string> = {
   run: '#2B6CB0', strength: '#5A5E68', gym: '#B7791F', sim: '#C05621', rest: '#8A8A9A', race: '#E03131',
@@ -18,8 +23,17 @@ const TYPE_COLOR: Record<HyroxDayType, string> = {
 const TYPE_LABEL: Record<HyroxDayType, string> = {
   run: 'RUN', strength: 'LIFT', gym: 'GYM', sim: 'SIM', rest: 'REST', race: 'RACE',
 };
+const PILLAR_LABELS: Record<PillarRole, string> = {
+  lift: 'Lift day', qualityRun: 'Quality run', gym: 'Hyrox-gym day (Ski/sled/rower)', longOrSim: 'Long run / Sim day',
+};
+const PILLAR_ORDER: PillarRole[] = ['lift', 'qualityRun', 'gym', 'longOrSim'];
+const RECOVERY_LABELS: Record<RecoveryOption, string> = {
+  rest: 'Rest', easyWalk: 'Easy walk / mobility', easyRun: 'Easy run', easyLift: 'Easy lift',
+};
+const RECOVERY_OPTIONS: RecoveryOption[] = ['rest', 'easyWalk', 'easyRun', 'easyLift'];
+const TIER_ORDER: HyroxTier[] = ['top5', 'top10', 'top20'];
 
-type Tab = 'today' | 'plan' | 'track' | 'group' | 'race';
+type Tab = 'today' | 'plan' | 'track' | 'group' | 'race' | 'setup';
 
 function DayRow({
   d, showWeek, done, onToggle,
@@ -71,6 +85,7 @@ export default function Hyrox() {
   const [joinCode, setJoinCode] = useState('');
   const [groupBusy, setGroupBusy] = useState(false);
   const [groupErr, setGroupErr] = useState('');
+  const [pendingTier, setPendingTier] = useState<HyroxTier | null>(null);
 
   const { data: progress } = useHyroxProgress(user?.id);
   const saveProgressRemote = useSaveHyroxProgress(user?.id);
@@ -85,19 +100,33 @@ export default function Hyrox() {
   const times = user ? (progress?.times ?? guestProgress.times) : guestProgress.times;
   const benchmarks = user ? (progress?.benchmarks ?? []) : guestProgress.benchmarks;
   const stations = user ? (progress?.stations ?? {}) : guestProgress.stations;
+  const pillarDayMap = user ? (progress?.pillarDayMap ?? DEFAULT_PILLAR_DAY_MAP) : guestProgress.pillarDayMap;
+  const recoveryChoices = user ? (progress?.recoveryChoices ?? DEFAULT_RECOVERY_CHOICES) : guestProgress.recoveryChoices;
+  const tier: HyroxTier = user ? (progress?.tier ?? 'top5') : guestProgress.tier;
 
-  const saveProgress = (patch: Partial<Pick<typeof guestProgress, 'done' | 'times' | 'benchmarks' | 'stations'>>) => {
+  const saveProgress = (patch: Partial<Pick<typeof guestProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'pillarDayMap' | 'recoveryChoices' | 'tier'>>) => {
     if (user) { void saveProgressRemote(patch); } else { saveGuestProgress(patch); }
   };
+
+  const weeks = WEEKS_BY_TIER[tier];
+  const targets = TARGETS_BY_TIER[tier];
+  const recoveryDays = useMemo(
+    () => WEEKDAYS.filter((dw) => !Object.values(pillarDayMap).includes(dw)),
+    [pillarDayMap],
+  );
+  const days = useMemo(
+    () => buildPersonalDays(pillarDayMap, recoveryChoices, tier),
+    [pillarDayMap, recoveryChoices, tier],
+  );
 
   const partner = groupInfo?.members.find((m) => m.userId !== user?.id);
   const { data: partnerProgress } = useHyroxProgress(partner?.userId, { isPartner: true });
 
   const todayISO = fmtDate(new Date());
-  const today = ALL_DAYS.find((d) => d.date === todayISO) || ALL_DAYS.find((d) => d.date > todayISO) || ALL_DAYS[ALL_DAYS.length - 1];
+  const today = days.find((d) => d.date === todayISO) || days.find((d) => d.date > todayISO) || days[days.length - 1];
   const daysToRace = Math.max(0, Math.round((new Date(RACE_DAY).getTime() - new Date(todayISO).getTime()) / 86400000));
   const doneCount = Object.values(done).filter(Boolean).length;
-  const totalSessions = ALL_DAYS.filter((d) => d.type !== 'rest').length;
+  const totalSessions = days.filter((d) => d.type !== 'rest').length;
   const curWeek = today.week;
 
   const toggleDone = (date: string) => {
@@ -120,6 +149,51 @@ export default function Hyrox() {
   const printPlan = () => {
     setPrintMode(true);
     setTimeout(() => { window.print(); setPrintMode(false); }, 100);
+  };
+
+  // Picking a day for a pillar swaps it with whichever pillar (or
+  // recovery day) currently owns that day — always exactly 4 pillar days
+  // and 3 recovery days, never a duplicate or a missing one.
+  const setPillarDay = (role: PillarRole, newDay: string) => {
+    const current = pillarDayMap[role];
+    if (current === newDay) return;
+    const otherRole = (Object.keys(pillarDayMap) as PillarRole[]).find((r) => pillarDayMap[r] === newDay);
+    const nextPillarMap = { ...pillarDayMap, [role]: newDay };
+    const nextRecovery = { ...recoveryChoices };
+    if (otherRole) {
+      nextPillarMap[otherRole] = current;
+    } else {
+      delete nextRecovery[newDay];
+      nextRecovery[current] = 'rest';
+    }
+    saveProgress({ pillarDayMap: nextPillarMap, recoveryChoices: nextRecovery });
+  };
+
+  const recoveryFloorCount = (choices: typeof recoveryChoices) =>
+    recoveryDays.filter((d) => choices[d] === 'rest' || choices[d] === 'easyWalk').length;
+
+  const setRecoveryChoice = (day: string, option: RecoveryOption) => {
+    const next = { ...recoveryChoices, [day]: option };
+    const floor = TIER_RECOVERY_FLOOR[tier];
+    if (recoveryFloorCount(next) < floor) return; // would drop below this tier's mandatory recovery floor
+    saveProgress({ recoveryChoices: next });
+  };
+
+  const applyTier = (newTier: HyroxTier) => {
+    const floor = TIER_RECOVERY_FLOOR[newTier];
+    const nextRecovery = { ...recoveryChoices };
+    for (const d of recoveryDays) {
+      if (recoveryFloorCount(nextRecovery) >= floor) break;
+      if (nextRecovery[d] !== 'rest' && nextRecovery[d] !== 'easyWalk') nextRecovery[d] = 'rest';
+    }
+    saveProgress({ tier: newTier, recoveryChoices: nextRecovery });
+    setPendingTier(null);
+  };
+
+  const selectTier = (newTier: HyroxTier) => {
+    if (newTier === tier) return;
+    const isDowngrade = TIER_ORDER.indexOf(newTier) > TIER_ORDER.indexOf(tier);
+    if (isDowngrade) setPendingTier(newTier); else applyTier(newTier);
   };
 
   const handleCreateGroup = async () => {
@@ -165,7 +239,7 @@ export default function Hyrox() {
       <div className="no-print flex items-center justify-between rounded-lg p-4 mb-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
         <div>
           <div className="text-xl font-black text-primary">HYROX ROAD</div>
-          <div className="text-xs text-secondary font-mono mt-0.5">DOUBLES OPEN · DEC 3 2026</div>
+          <div className="text-xs text-secondary font-mono mt-0.5">DOUBLES OPEN · DEC 3 2026 · {TIER_LABEL[tier]}</div>
         </div>
         <div className="text-right">
           <div className="text-2xl font-black text-primary">{daysToRace}</div>
@@ -189,7 +263,7 @@ export default function Hyrox() {
       {/* Tabs */}
       <div className="no-print flex gap-1 mb-4 flex-wrap">
         {([
-          ['today', 'Today'], ['plan', 'Plan'], ['track', 'Track'], ['group', 'Group'], ['race', 'Race'],
+          ['today', 'Today'], ['plan', 'Plan'], ['setup', 'Setup'], ['track', 'Track'], ['group', 'Group'], ['race', 'Race'],
         ] as [Tab, string][]).map(([id, label]) => (
           <button
             key={id}
@@ -230,7 +304,7 @@ export default function Hyrox() {
           <div className="flex gap-2.5 mt-3.5">
             {[
               ['Sessions done', `${doneCount}/${totalSessions}`],
-              ['This week', curWeek ? `${W[curWeek]?.km ?? '–'} km` : 'prep'],
+              ['This week', curWeek && curWeek <= 18 ? `${weeks[curWeek]?.km ?? '–'} km` : curWeek === 19 ? `${WEEK19.km} km` : 'prep'],
               ['Phase', curWeek ? phaseOf(curWeek).name.split('· ')[1] : 'Prep'],
             ].map(([l, v]) => (
               <div key={l} className="flex-1 rounded-lg p-2.5" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
@@ -242,7 +316,7 @@ export default function Hyrox() {
 
           <div className="mt-4">
             <div className="text-sm font-black text-primary mb-1">NEXT 7 DAYS</div>
-            {ALL_DAYS.filter((d) => d.date >= todayISO).slice(0, 7).map((d) => (
+            {days.filter((d) => d.date >= todayISO).slice(0, 7).map((d) => (
               <DayRow key={d.date} d={d} showWeek done={!!done[d.date]} onToggle={toggleDone} />
             ))}
           </div>
@@ -254,22 +328,19 @@ export default function Hyrox() {
         <div>
           <div className="no-print rounded-lg p-3 mb-3.5" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
             <div className="text-sm font-black text-primary mb-2">YOUR TRAINING TIMES</div>
-            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-3">
-              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((dw) => (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+              {WEEKDAYS.map((dw) => (
                 <label key={dw} className="text-[11px] text-secondary">
                   {dw}
-                  <input
-                    type="time" value={times[dw]}
-                    onChange={(e) => setTime(dw, e.target.value)}
-                    className="w-full mt-0.5 px-1.5 py-1 rounded text-xs"
-                    style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)' }}
-                  />
+                  <div className="mt-0.5">
+                    <TimeWheelPicker value={times[dw]} onChange={(v) => setTime(dw, v)} />
+                  </div>
                 </label>
               ))}
             </div>
             <div className="flex gap-2 flex-wrap">
               <button
-                onClick={() => download(makeICS(ALL_DAYS, times), 'hyrox-19-weeks.ics')}
+                onClick={() => download(makeICS(days, times), 'hyrox-19-weeks.ics')}
                 className="flex-1 min-w-[160px] py-2.5 rounded-md font-bold text-sm flex items-center justify-center gap-1.5"
                 style={{ background: tokens.button.primaryBg, color: tokens.button.primaryText }}
               >
@@ -291,11 +362,12 @@ export default function Hyrox() {
                     <span className="font-bold text-primary">Week 0 — Prep (Jul 23–26)</span><span className="text-primary">{open ? '−' : '+'}</span>
                   </button>
                   {printMode && <div className="font-black text-sm text-primary my-2">WEEK 0 — PREP</div>}
-                  {open && <div className="px-1">{ALL_DAYS.filter((d) => d.week === 0).map((d) => <DayRow key={d.date} d={d} done={!!done[d.date]} onToggle={toggleDone} />)}</div>}
+                  {open && <div className="px-1">{days.filter((d) => d.week === 0).map((d) => <DayRow key={d.date} d={d} done={!!done[d.date]} onToggle={toggleDone} />)}</div>}
                 </div>
               );
             }
-            const wk = W[w]; const ph = phaseOf(w);
+            const wk: Pick<HyroxWeek, 'km' | 'deload' | 'race' | 'bench'> = w === 19 ? { km: WEEK19.km, race: WEEK19.race } : weeks[w];
+            const ph = phaseOf(w);
             const open = printMode || openWeek === w;
             const start = new Date(START); start.setDate(START.getDate() + (w - 1) * 7);
             return (
@@ -313,10 +385,97 @@ export default function Hyrox() {
                   <span className="text-primary">{open ? '−' : '+'}</span>
                 </button>
                 {printMode && <div className="font-black text-sm text-primary my-2">WEEK {w} · {ph.name} · {wk.km} km {wk.deload ? '· DELOAD' : ''}</div>}
-                {open && <div className="px-1">{ALL_DAYS.filter((d) => d.week === w).map((d) => <DayRow key={d.date} d={d} done={!!done[d.date]} onToggle={toggleDone} />)}</div>}
+                {open && <div className="px-1">{days.filter((d) => d.week === w).map((d) => <DayRow key={d.date} d={d} done={!!done[d.date]} onToggle={toggleDone} />)}</div>}
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* SETUP */}
+      {tab === 'setup' && !printMode && (
+        <div className="no-print space-y-4">
+          <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
+            <div className="text-sm font-black text-primary mb-1">AMBITION TIER</div>
+            <div className="text-xs text-secondary mb-3">Changes pacing targets and how much rest is required. Top 5% is the expectation — downgrading needs a confirm.</div>
+            <div className="flex gap-2">
+              {TIER_ORDER.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => selectTier(t)}
+                  className="flex-1 py-2 rounded-md font-bold text-sm"
+                  style={tier === t
+                    ? { background: tokens.button.primaryBg, color: tokens.button.primaryText }
+                    : { background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
+                >
+                  {TIER_LABEL[t]}
+                </button>
+              ))}
+            </div>
+            {pendingTier && (
+              <div className="mt-3 rounded-md p-3 text-sm" style={{ background: tokens.chip.background, color: tokens.chip.text }}>
+                Sure? {TIER_LABEL[tier]} is where the real gains are — {TIER_LABEL[pendingTier]} is a real downgrade, not just a label. 😏
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => applyTier(pendingTier)} className="px-3 py-1.5 rounded font-bold text-xs" style={{ background: tokens.button.primaryBg, color: tokens.button.primaryText }}>
+                    Yes, downgrade
+                  </button>
+                  <button onClick={() => setPendingTier(null)} className="px-3 py-1.5 rounded font-bold text-xs" style={{ border: '1px solid var(--border-subtle)' }}>
+                    Never mind
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
+            <div className="text-sm font-black text-primary mb-1">CORE SESSIONS</div>
+            <div className="text-xs text-secondary mb-3">Exactly one of each per week — pick which real day it lands on. Picking a day swaps it with whatever's currently there.</div>
+            {PILLAR_ORDER.map((role) => (
+              <label key={role} className="flex justify-between items-center py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                <span className="text-sm font-semibold text-primary">{PILLAR_LABELS[role]}</span>
+                <select
+                  value={pillarDayMap[role]}
+                  onChange={(e) => setPillarDay(role, e.target.value)}
+                  className="px-2 py-1.5 rounded text-sm"
+                  style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)' }}
+                >
+                  {WEEKDAYS.map((dw) => <option key={dw} value={dw}>{dw}</option>)}
+                </select>
+              </label>
+            ))}
+          </div>
+
+          <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
+            <div className="text-sm font-black text-primary mb-1">RECOVERY DAYS</div>
+            <div className="text-xs text-secondary mb-3">
+              At {TIER_LABEL[tier]}, at least {TIER_RECOVERY_FLOOR[tier]} of these {recoveryDays.length} must stay Rest or Easy Walk.
+            </div>
+            {recoveryDays.map((dw) => {
+              const current = recoveryChoices[dw] ?? 'rest';
+              return (
+                <label key={dw} className="flex justify-between items-center py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <span className="text-sm font-semibold text-primary">{dw}</span>
+                  <select
+                    value={current}
+                    onChange={(e) => setRecoveryChoice(dw, e.target.value as RecoveryOption)}
+                    className="px-2 py-1.5 rounded text-sm"
+                    style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)' }}
+                  >
+                    {RECOVERY_OPTIONS.map((opt) => {
+                      const wouldViolateFloor = opt !== current
+                        && (opt === 'easyRun' || opt === 'easyLift')
+                        && recoveryFloorCount({ ...recoveryChoices, [dw]: opt }) < TIER_RECOVERY_FLOOR[tier];
+                      return (
+                        <option key={opt} value={opt} disabled={wouldViolateFloor}>
+                          {RECOVERY_LABELS[opt]}{wouldViolateFloor ? ' (needs more rest days first)' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -333,13 +492,13 @@ export default function Hyrox() {
                 className="flex-1 min-w-[100px] px-2 py-2 rounded text-sm" style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)' }} />
               <button
                 onClick={() => { if (!bmDraft.time) return; saveProgress({ benchmarks: [...benchmarks, { ...bmDraft, date: todayISO }] }); setBmDraft({ event: '5K', time: '' }); }}
-                className="px-4 py-2 rounded font-bold text-sm" style={{ background: tokens.button.primaryBg, color: tokens.button.primaryText, opacity: user ? 1 : 0.5 }}
+                className="px-4 py-2 rounded font-bold text-sm" style={{ background: tokens.button.primaryBg, color: tokens.button.primaryText }}
               >
                 Log
               </button>
             </div>
             {benchmarks.length === 0 ? (
-              <div className="text-sm text-secondary mt-2.5">No benchmarks yet. First one: 5K time trial. Targets: W0 baseline → W5 ~26:00 → W10 ~24:00 → W14 ~22:30.</div>
+              <div className="text-sm text-secondary mt-2.5">No benchmarks yet. First one: 5K time trial.</div>
             ) : (
               <table className="w-full mt-2.5 text-sm" style={{ borderCollapse: 'collapse' }}>
                 <tbody>
@@ -448,7 +607,7 @@ export default function Hyrox() {
                         </>
                       )}
                       <div className="text-xs font-bold text-secondary mb-1">RECENT DAYS</div>
-                      {ALL_DAYS.filter((d) => d.date <= todayISO).slice(-5).map((d) => (
+                      {days.filter((d) => d.date <= todayISO).slice(-5).map((d) => (
                         <DayRow key={d.date} d={d} showWeek done={!!partnerProgress.done[d.date]} />
                       ))}
                     </>
@@ -467,9 +626,9 @@ export default function Hyrox() {
       {/* RACE / REMEMBER */}
       {tab === 'race' && !printMode && (
         <div className="no-print">
-          <div className="text-base font-black text-primary mb-2">TARGETS</div>
+          <div className="text-base font-black text-primary mb-2">TARGETS <span className="text-xs text-secondary font-normal">({TIER_LABEL[tier]})</span></div>
           <div className="rounded-lg p-3.5 mb-4" style={{ background: tokens.surface.accent }}>
-            {TARGETS.map(([l, v]) => (
+            {targets.map(([l, v]) => (
               <div key={l} className="flex justify-between py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                 <span className="text-sm text-secondary">{l}</span>
                 <span className="font-bold font-mono" style={{ color: '#B7791F' }}>{v}</span>
