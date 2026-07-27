@@ -79,7 +79,7 @@ function WheelColumn<T extends string | number>({
           style={{
             height: ITEM_HEIGHT, lineHeight: `${ITEM_HEIGHT}px`, scrollSnapAlign: 'center',
             fontWeight: o === value ? 800 : 500,
-            color: o === value ? tokens.text.primary : tokens.text.muted,
+            color: o === value ? tokens.text.primary : tokens.text.secondary,
             cursor: 'pointer', fontSize: o === value ? 16 : 14,
           }}
         >
@@ -98,13 +98,18 @@ function WheelColumn<T extends string | number>({
  * the time directly. Value/onChange stay in 24h "HH:MM" to match the
  * existing `times` state shape used for the .ics export.
  */
+function formatDisplay(value: string): string {
+  const { h12, m, meridiem } = from24h(value);
+  return `${h12}:${String(m).padStart(2, '0')} ${meridiem}`;
+}
+
 export function TimeWheelPicker({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
   const tokens = useThemeTokens();
   const [open, setOpen] = useState(false);
-  const [textValue, setTextValue] = useState(value);
+  const [textValue, setTextValue] = useState(() => formatDisplay(value));
   const { h12, m, meridiem } = from24h(value);
 
-  useEffect(() => { setTextValue(value); }, [value]);
+  useEffect(() => { setTextValue(formatDisplay(value)); }, [value]);
 
   const set = (patch: Partial<{ h12: number; m: number; meridiem: 'AM' | 'PM' }>) => {
     onChange(to24h(patch.h12 ?? h12, patch.m ?? m, patch.meridiem ?? meridiem));
@@ -117,8 +122,12 @@ export function TimeWheelPicker({ value, onChange, disabled }: { value: string; 
         type="button"
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        className="w-full text-left px-2 py-1.5 rounded text-sm"
-        style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)', opacity: disabled ? 0.5 : 1 }}
+        className="w-full text-left px-2 py-1.5 rounded text-sm font-semibold"
+        style={{
+          WebkitAppearance: 'none', appearance: 'none',
+          border: '1px solid var(--border-subtle)', background: tokens.surface.primary,
+          color: tokens.text.primary, opacity: disabled ? 0.5 : 1,
+        }}
       >
         {h12}:{String(m).padStart(2, '0')} {meridiem}
       </button>
@@ -142,15 +151,15 @@ export function TimeWheelPicker({ value, onChange, disabled }: { value: string; 
               onChange={(e) => setTextValue(e.target.value)}
               onBlur={() => {
                 const parsed = parseTypedTime(textValue);
-                if (parsed) onChange(parsed); else setTextValue(value);
+                if (parsed) onChange(parsed); else setTextValue(formatDisplay(value));
               }}
               className="flex-1 px-2 py-1 rounded text-xs"
-              style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)' }}
+              style={{ WebkitAppearance: 'none', border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: tokens.text.primary }}
             />
             <button
               type="button" onClick={() => setOpen(false)}
               className="px-2 py-1 rounded text-xs font-bold"
-              style={{ background: tokens.button.primaryBg, color: tokens.button.primaryText }}
+              style={{ WebkitAppearance: 'none', appearance: 'none', background: tokens.button.primaryBg, color: tokens.button.primaryText }}
             >
               Done
             </button>

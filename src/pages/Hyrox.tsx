@@ -33,6 +33,23 @@ const RECOVERY_LABELS: Record<RecoveryOption, string> = {
 const RECOVERY_OPTIONS: RecoveryOption[] = ['rest', 'easyWalk', 'easyRun', 'easyLift'];
 const TIER_ORDER: HyroxTier[] = ['top5', 'top10', 'top20'];
 
+const TIER_DESCRIPTIONS: Record<HyroxTier, string> = {
+  top5: 'Target: 1:02–1:05 team time (roughly the top 5% of finishers). The bold goal — needs disciplined pacing and all 4 core sessions every week. Only 1 mandatory recovery day: put the other 2 toward Easy Run if you can — running pace is what actually separates finishing times, not extra lifting.',
+  top10: 'Target: sub-1:07 team time. A strong, very achievable goal for a first Hyrox season. 2 mandatory recovery days — more room to recover between hard sessions than Top 5%.',
+  top20: 'Target: sub-1:13 team time. The safest on-ramp, built for people newer to structured running. All 3 recovery days stay Rest/Walk while you build a base — nothing optional to add yet.',
+};
+
+// One extra run day is exactly what "Easy Run" is — the highest-leverage
+// upgrade on a recovery day, since running pace (not strength) decides
+// where you land. Shown once as a shared legend rather than repeated
+// per-day, so the Setup screen doesn't read like 12 near-identical dropdowns.
+const RECOVERY_DESCRIPTIONS: Record<RecoveryOption, string> = {
+  rest: 'Full recovery. Zero training stress — necessary, not optional.',
+  easyWalk: 'Active recovery: a walk + light stretching. Still counts as rest.',
+  easyRun: 'One more run day. The single highest-leverage upgrade for race pace — pick this over Easy Lift if you can only add one.',
+  easyLift: 'Optional light strength/mobility filler. Nice-to-have — strength isn\'t what separates finishing times here.',
+};
+
 type Tab = 'today' | 'plan' | 'track' | 'group' | 'race' | 'setup';
 
 function DayRow({
@@ -263,7 +280,7 @@ export default function Hyrox() {
       {/* Tabs */}
       <div className="no-print flex gap-1 mb-4 flex-wrap">
         {([
-          ['today', 'Today'], ['plan', 'Plan'], ['setup', 'Setup'], ['track', 'Track'], ['group', 'Group'], ['race', 'Race'],
+          ['today', 'Today'], ['plan', 'Plan'], ['track', 'Track'], ['group', 'Group'], ['race', 'Race'], ['setup', 'Setup'],
         ] as [Tab, string][]).map(([id, label]) => (
           <button
             key={id}
@@ -412,9 +429,13 @@ export default function Hyrox() {
                 </button>
               ))}
             </div>
+            <div className="text-sm text-primary mt-3 rounded-md p-3" style={{ background: tokens.surface.accent }}>
+              {TIER_DESCRIPTIONS[tier]}
+            </div>
             {pendingTier && (
               <div className="mt-3 rounded-md p-3 text-sm" style={{ background: tokens.chip.background, color: tokens.chip.text }}>
                 Sure? {TIER_LABEL[tier]} is where the real gains are — {TIER_LABEL[pendingTier]} is a real downgrade, not just a label. 😏
+                <div className="mt-1 opacity-80">{TIER_DESCRIPTIONS[pendingTier]}</div>
                 <div className="flex gap-2 mt-2">
                   <button onClick={() => applyTier(pendingTier)} className="px-3 py-1.5 rounded font-bold text-xs" style={{ background: tokens.button.primaryBg, color: tokens.button.primaryText }}>
                     Yes, downgrade
@@ -448,31 +469,57 @@ export default function Hyrox() {
           <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
             <div className="text-sm font-black text-primary mb-1">RECOVERY DAYS</div>
             <div className="text-xs text-secondary mb-3">
-              At {TIER_LABEL[tier]}, at least {TIER_RECOVERY_FLOOR[tier]} of these {recoveryDays.length} must stay Rest or Easy Walk.
+              Your {recoveryDays.length} flexible days — pick what each one does.
             </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+              {RECOVERY_OPTIONS.map((opt) => (
+                <div key={opt} className="text-xs rounded-md p-2" style={{ background: tokens.surface.accent }}>
+                  <span className="font-bold text-primary">{RECOVERY_LABELS[opt]}</span>
+                  <div className="text-secondary mt-0.5">{RECOVERY_DESCRIPTIONS[opt]}</div>
+                </div>
+              ))}
+            </div>
+
+            <div
+              className="text-xs font-bold mb-3 rounded-md px-2.5 py-1.5 inline-block"
+              style={recoveryFloorCount(recoveryChoices) >= TIER_RECOVERY_FLOOR[tier]
+                ? { background: 'rgba(34,197,94,0.15)', color: '#16A34A' }
+                : { background: tokens.chip.background, color: tokens.chip.text }}
+            >
+              {recoveryFloorCount(recoveryChoices) >= TIER_RECOVERY_FLOOR[tier]
+                ? `✓ Recovery requirement met (${recoveryFloorCount(recoveryChoices)} of ${recoveryDays.length} days)`
+                : `${TIER_LABEL[tier]} needs ${TIER_RECOVERY_FLOOR[tier] - recoveryFloorCount(recoveryChoices)} more Rest/Walk day${TIER_RECOVERY_FLOOR[tier] - recoveryFloorCount(recoveryChoices) > 1 ? 's' : ''}`}
+            </div>
+
             {recoveryDays.map((dw) => {
               const current = recoveryChoices[dw] ?? 'rest';
               return (
-                <label key={dw} className="flex justify-between items-center py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <span className="text-sm font-semibold text-primary">{dw}</span>
-                  <select
-                    value={current}
-                    onChange={(e) => setRecoveryChoice(dw, e.target.value as RecoveryOption)}
-                    className="px-2 py-1.5 rounded text-sm"
-                    style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)' }}
-                  >
+                <div key={dw} className="py-2.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <div className="text-sm font-semibold text-primary mb-1.5">{dw}</div>
+                  <div className="flex gap-1.5 flex-wrap">
                     {RECOVERY_OPTIONS.map((opt) => {
-                      const wouldViolateFloor = opt !== current
+                      const isCurrent = opt === current;
+                      const disabled = !isCurrent
                         && (opt === 'easyRun' || opt === 'easyLift')
                         && recoveryFloorCount({ ...recoveryChoices, [dw]: opt }) < TIER_RECOVERY_FLOOR[tier];
                       return (
-                        <option key={opt} value={opt} disabled={wouldViolateFloor}>
-                          {RECOVERY_LABELS[opt]}{wouldViolateFloor ? ' (needs more rest days first)' : ''}
-                        </option>
+                        <button
+                          key={opt}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => setRecoveryChoice(dw, opt)}
+                          className="px-2.5 py-1 rounded-full text-xs font-semibold"
+                          style={isCurrent
+                            ? { background: tokens.button.primaryBg, color: tokens.button.primaryText }
+                            : { background: 'transparent', color: tokens.text.secondary, border: '1px solid var(--border-subtle)', opacity: disabled ? 0.4 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}
+                        >
+                          {RECOVERY_LABELS[opt]}
+                        </button>
                       );
                     })}
-                  </select>
-                </label>
+                  </div>
+                </div>
               );
             })}
           </div>
