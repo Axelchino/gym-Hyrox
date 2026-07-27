@@ -39,6 +39,14 @@ const TIER_DESCRIPTIONS: Record<HyroxTier, string> = {
   top20: 'Target: sub-1:13 team time. The safest on-ramp, built for people newer to structured running. All 3 recovery days stay Rest/Walk while you build a base — nothing optional to add yet.',
 };
 
+// Every downgrade gets its own line instead of one reused message —
+// escalates with how big the drop is.
+const DOWNGRADE_MESSAGES: Record<string, string> = {
+  'top5->top10': "Sure? Top 5% is where the real gains are — Top 10% is a real downgrade, not just a label. 😏",
+  'top5->top20': "Skipping straight past Top 10% to Top 20%? That's not pacing yourself, that's opting out. 😬",
+  'top10->top20': "Downgrading again? Bold strategy — let's see if it pays off. 🫡",
+};
+
 // One extra run day is exactly what "Easy Run" is — the highest-leverage
 // upgrade on a recovery day, since running pace (not strength) decides
 // where you land. Shown once as a shared legend rather than repeated
@@ -463,7 +471,7 @@ export default function Hyrox() {
             </div>
             {pendingTier && (
               <div className="mt-3 rounded-md p-3 text-sm" style={{ background: tokens.chip.background, color: tokens.chip.text }}>
-                Sure? {TIER_LABEL[tier]} is where the real gains are — {TIER_LABEL[pendingTier]} is a real downgrade, not just a label. 😏
+                {DOWNGRADE_MESSAGES[`${tier}->${pendingTier}`] ?? `Sure? ${TIER_LABEL[tier]} is where the real gains are — ${TIER_LABEL[pendingTier]} is a real downgrade, not just a label. 😏`}
                 <div className="mt-1 opacity-80">{TIER_DESCRIPTIONS[pendingTier]}</div>
                 <div className="flex gap-2 mt-2">
                   <button onClick={() => applyTier(pendingTier)} className="px-3 py-1.5 rounded font-bold text-xs" style={{ background: tokens.button.primaryBg, color: tokens.button.primaryText }}>
