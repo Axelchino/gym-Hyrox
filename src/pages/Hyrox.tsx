@@ -521,6 +521,12 @@ export default function Hyrox() {
                 : `${TIER_LABEL[tier]} needs ${TIER_RECOVERY_FLOOR[tier] - recoveryFloorCount(recoveryChoices)} more Rest/Walk day${TIER_RECOVERY_FLOOR[tier] - recoveryFloorCount(recoveryChoices) > 1 ? 's' : ''}`}
             </div>
 
+            {tier !== 'top20' && recoveryFloorCount(recoveryChoices) > TIER_RECOVERY_FLOOR[tier] && (
+              <div className="text-xs rounded-md p-2.5 mb-3" style={{ background: 'rgba(234,88,12,0.12)', color: '#C2410C' }}>
+                You're resting {recoveryFloorCount(recoveryChoices) - TIER_RECOVERY_FLOOR[tier]} more day{recoveryFloorCount(recoveryChoices) - TIER_RECOVERY_FLOOR[tier] > 1 ? 's' : ''} than {TIER_LABEL[tier]} requires. That's the safe floor, not the target — if you actually want {TIER_LABEL[tier]}, switch a Rest day to Easy Run: running pace is what closes the gap, not extra recovery.
+              </div>
+            )}
+
             {recoveryDays.map((dw) => {
               const current = recoveryChoices[dw] ?? 'rest';
               return (
