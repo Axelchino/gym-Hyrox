@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { User, AuthError } from '@supabase/supabase-js';
+import type { User, Session, AuthError } from '@supabase/supabase-js';
 
 export interface SignUpData {
   email: string;
@@ -20,7 +20,7 @@ export const authService = {
   /**
    * Sign up a new user
    */
-  async signUp(data: SignUpData): Promise<{ user: User | null; error: AuthError | null }> {
+  async signUp(data: SignUpData): Promise<{ user: User | null; session: Session | null; error: AuthError | null }> {
     const { email, password, name } = data;
 
     const { data: authData, error } = await supabase.auth.signUp({
@@ -33,7 +33,11 @@ export const authService = {
       },
     });
 
-    return { user: authData.user, error };
+    // authData.session is non-null only when "Confirm email" is off — in
+    // that case signUp already logs the user in, and callers need to know
+    // that rather than telling someone who's already authenticated to go
+    // sign in again.
+    return { user: authData.user, session: authData.session, error };
   },
 
   /**

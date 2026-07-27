@@ -29,14 +29,26 @@ export function Auth() {
         if (error) {
           setError(error.message);
         } else {
-          navigate('/');
+          // Hard navigation, not client-side navigate() — guarantees every
+          // provider (auth, theme, profile) remounts fresh instead of
+          // depending on every consumer reacting correctly to the state
+          // change, which is what was causing "needs a refresh after
+          // signing in" reports.
+          window.location.href = '/';
         }
       } else if (mode === 'signup') {
-        const { error } = await signUp(email, password, name);
+        const { error, session } = await signUp(email, password, name);
         if (error) {
           setError(error.message);
+        } else if (session) {
+          // "Confirm email" is off for this project, so signUp already
+          // logged the user in — sending them back to a "please sign in"
+          // screen here would be lying to them (and *was* the actual bug:
+          // they were already authenticated, just not on a page that knew
+          // it, and only a manual refresh revealed it).
+          window.location.href = '/';
         } else {
-          setMessage('Account created! You can now sign in.');
+          setMessage('Account created! Check your email to confirm your address, then sign in.');
           setMode('signin');
           setPassword('');
         }

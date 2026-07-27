@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { User } from '@supabase/supabase-js';
+import type { User, Session } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { authService } from '../services/authService';
 import { migrationService } from '../services/migrationService';
@@ -15,7 +15,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   isGuest: boolean;
-  signUp: (email: string, password: string, name?: string) => Promise<{ error: AuthError | null }>;
+  signUp: (email: string, password: string, name?: string) => Promise<{ error: AuthError | null; session: Session | null }>;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signInWithGoogle: () => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
@@ -124,11 +124,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Exit guest mode before creating real account
     exitGuestMode();
 
-    const { error } = await authService.signUp({ email, password, name });
+    const { error, session } = await authService.signUp({ email, password, name });
 
     // Migration will be triggered automatically by onAuthStateChange
 
-    return { error };
+    return { error, session };
   };
 
   const signIn = async (email: string, password: string) => {

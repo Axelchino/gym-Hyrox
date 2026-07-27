@@ -84,8 +84,11 @@ export function Header() {
               <span className="text-base sm:text-lg font-semibold text-primary tracking-tight">GymTracker Pro</span>
             </Link>
 
-            {/* Navigation */}
-            <nav className="flex items-center gap-1">
+            {/* Navigation — horizontally scrollable so every link stays reachable
+                on narrow phones instead of overflowing off-screen (portrait width
+                isn't enough to fit logo + all 5 links + the right-side actions). */}
+            <nav className="hyrox-nav-scroll flex items-center gap-1 overflow-x-auto min-w-0" style={{ scrollbarWidth: 'none' }}>
+              <style>{`.hyrox-nav-scroll::-webkit-scrollbar { display: none; }`}</style>
               {navLinks.map(({ to, label }) => {
                 const isActive = location.pathname === to;
                 return (
