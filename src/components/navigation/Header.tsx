@@ -1,5 +1,5 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Search, User, Plus, Dumbbell, RotateCcw } from 'lucide-react';
+import { Search, User, Plus, Dumbbell, RotateCcw, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useThemeTokens, getAccentColors, getSelectedColors } from '../../utils/themeHelpers';
@@ -78,33 +78,43 @@ export function Header() {
         <div className="flex items-center justify-between">
           {/* Left: Logo + Navigation */}
           <div className="flex items-center gap-2 sm:gap-6 min-w-0">
-            {/* Logo */}
+            {/* Logo — icon only on mobile, freeing width for the nav; full
+                wordmark from sm: up */}
             <Link to="/" className="flex items-center gap-1 sm:gap-2 group flex-shrink-0">
               <Dumbbell className="text-secondary opacity-60 group-hover:opacity-100 transition-opacity" size={20} strokeWidth={1.5} />
-              <span className="text-base sm:text-lg font-semibold text-primary tracking-tight">GymTracker Pro</span>
+              <span className="hidden sm:inline text-base sm:text-lg font-semibold text-primary tracking-tight">GymTracker Pro</span>
             </Link>
 
             {/* Navigation — horizontally scrollable so every link stays reachable
                 on narrow phones instead of overflowing off-screen (portrait width
-                isn't enough to fit logo + all 5 links + the right-side actions). */}
-            <nav className="hyrox-nav-scroll flex items-center gap-1 overflow-x-auto min-w-0" style={{ scrollbarWidth: 'none' }}>
-              <style>{`.hyrox-nav-scroll::-webkit-scrollbar { display: none; }`}</style>
-              {navLinks.map(({ to, label }) => {
-                const isActive = location.pathname === to;
-                return (
-                  <Link
-                    key={to}
-                    to={to}
-                    className="relative px-2 sm:px-3 lg:px-4 py-2 lg:py-3 text-[10px] sm:text-xs lg:text-sm font-medium text-primary hover:text-secondary transition-colors whitespace-nowrap"
-                    style={{
-                      borderBottom: isActive ? `2px solid ${tokens.navigation.activeIndicator}` : '2px solid transparent',
-                    }}
-                  >
-                    {label}
-                  </Link>
-                );
-              })}
-            </nav>
+                isn't enough to fit logo + all 5 links + the right-side actions).
+                A fading edge + arrow hints that there's more to scroll to. */}
+            <div className="relative min-w-0">
+              <nav className="hyrox-nav-scroll flex items-center gap-1 overflow-x-auto min-w-0" style={{ scrollbarWidth: 'none' }}>
+                <style>{`.hyrox-nav-scroll::-webkit-scrollbar { display: none; }`}</style>
+                {navLinks.map(({ to, label }) => {
+                  const isActive = location.pathname === to;
+                  return (
+                    <Link
+                      key={to}
+                      to={to}
+                      className="relative px-2 sm:px-3 lg:px-4 py-2 lg:py-3 text-[10px] sm:text-xs lg:text-sm font-medium text-primary hover:text-secondary transition-colors whitespace-nowrap"
+                      style={{
+                        borderBottom: isActive ? `2px solid ${tokens.navigation.activeIndicator}` : '2px solid transparent',
+                      }}
+                    >
+                      {label}
+                    </Link>
+                  );
+                })}
+              </nav>
+              <div
+                className="sm:hidden pointer-events-none absolute top-0 bottom-0 right-0 flex items-center justify-end"
+                style={{ width: 28, background: 'linear-gradient(to right, transparent, var(--surface) 70%)' }}
+              >
+                <ChevronRight size={14} className="text-secondary" />
+              </div>
+            </div>
           </div>
 
           {/* Right: Search + Actions */}
