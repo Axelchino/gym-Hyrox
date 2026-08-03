@@ -114,6 +114,76 @@ function DayRow({
   );
 }
 
+// Where each tier's target sits along an illustrative distribution — not
+// pulled from a real race database (unlike hyresult.com, which is what
+// this is modeled after), just the 3 tier values we already compute
+// placed on a generic bell curve so the number has a shape, not just
+// text. Top 5% sits furthest left (fastest/best), Top 20% furthest right.
+const CURVE_TIER_X: Record<HyroxTier, number> = { top5: 0.26, top10: 0.44, top20: 0.64 };
+const CURVE_PEAK_X = 0.55;
+const CURVE_SIGMA = 0.28;
+const curveHeightAt = (x: number) => Math.exp(-((x - CURVE_PEAK_X) ** 2) / (2 * CURVE_SIGMA * CURVE_SIGMA));
+
+function TargetCurve({ label, values, tier, color }: { label: string; values: Record<HyroxTier, string>; tier: HyroxTier; color: string }) {
+  const tokens = useThemeTokens();
+  const width = 280;
+  const height = 64;
+  const padX = 4;
+  const padTop = 10;
+  const baseline = height - 16;
+
+  const toSvgX = (x: number) => padX + x * (width - padX * 2);
+  const toSvgY = (y: number) => baseline - y * (baseline - padTop);
+
+  const points: string[] = [];
+  for (let i = 0; i <= 40; i++) {
+    const x = i / 40;
+    points.push(`${i === 0 ? 'M' : 'L'} ${toSvgX(x).toFixed(1)} ${toSvgY(curveHeightAt(x)).toFixed(1)}`);
+  }
+  const pathD = points.join(' ');
+  const areaD = `${pathD} L ${toSvgX(1)} ${baseline} L ${toSvgX(0)} ${baseline} Z`;
+  const gradId = `target-curve-${label.replace(/[^a-zA-Z0-9]/g, '')}`;
+
+  return (
+    <div className="rounded-lg p-3 mb-2.5" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
+      <div className="flex justify-between items-baseline mb-1">
+        <span className="text-sm font-semibold text-primary">{label}</span>
+        <span className="text-base font-bold font-mono" style={{ color }}>{values[tier]}</span>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} preserveAspectRatio="none">
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.45" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={areaD} fill={`url(#${gradId})`} />
+        <path d={pathD} fill="none" stroke={color} strokeWidth={2} strokeOpacity={0.8} />
+        <line x1={padX} y1={baseline} x2={width - padX} y2={baseline} stroke="var(--border-subtle)" strokeWidth={1} />
+        {TIER_ORDER.map((t) => {
+          const x = CURVE_TIER_X[t];
+          const cx = toSvgX(x);
+          const cy = toSvgY(curveHeightAt(x));
+          const isCurrent = t === tier;
+          return (
+            <g key={t}>
+              <line x1={cx} y1={cy} x2={cx} y2={baseline} stroke={color} strokeOpacity={isCurrent ? 0.55 : 0.2} strokeDasharray="2,3" />
+              <circle cx={cx} cy={cy} r={isCurrent ? 6 : 3.5} fill={isCurrent ? color : tokens.surface.elevated} stroke={color} strokeWidth={isCurrent ? 0 : 1.5} />
+            </g>
+          );
+        })}
+      </svg>
+      <div className="flex justify-between text-[10px] mt-0.5">
+        {TIER_ORDER.map((t) => (
+          <span key={t} className={t === tier ? '' : 'text-secondary'} style={{ fontWeight: t === tier ? 800 : 400, color: t === tier ? color : undefined }}>
+            {TIER_LABEL[t]}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Hyrox() {
   const { user, isGuest } = useAuth();
   const navigate = useNavigate();
@@ -151,7 +221,16 @@ export default function Hyrox() {
   };
 
   const weeks = WEEKS_BY_TIER[tier];
-  const targets = TARGETS_BY_TIER[tier];
+  const TARGET_CURVE_COLORS = ['#B7791F', '#C05621', '#2B6CB0', '#0891B2', '#E03131'];
+  const targetCurves = TARGETS_BY_TIER.top5.map(([label], i) => ({
+    label,
+    color: TARGET_CURVE_COLORS[i % TARGET_CURVE_COLORS.length],
+    values: {
+      top5: TARGETS_BY_TIER.top5[i][1],
+      top10: TARGETS_BY_TIER.top10[i][1],
+      top20: TARGETS_BY_TIER.top20[i][1],
+    } as Record<HyroxTier, string>,
+  }));
   const recoveryDays = useMemo(
     () => WEEKDAYS.filter((dw) => !Object.values(pillarDayMap).includes(dw)),
     [pillarDayMap],
@@ -782,12 +861,9 @@ export default function Hyrox() {
       {tab === 'race' && !printMode && (
         <div className="no-print">
           <div className="text-base font-black text-primary mb-2">TARGETS <span className="text-xs text-secondary font-normal">({TIER_LABEL[tier]})</span></div>
-          <div className="rounded-lg p-3.5 mb-4" style={{ background: tokens.surface.accent }}>
-            {targets.map(([l, v]) => (
-              <div key={l} className="flex justify-between py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                <span className="text-sm text-secondary">{l}</span>
-                <span className="font-bold font-mono" style={{ color: '#B7791F' }}>{v}</span>
-              </div>
+          <div className="mb-4">
+            {targetCurves.map((tc) => (
+              <TargetCurve key={tc.label} label={tc.label} values={tc.values} tier={tier} color={tc.color} />
             ))}
           </div>
           <div className="text-base font-black text-primary mb-2">NEVER FORGET</div>
