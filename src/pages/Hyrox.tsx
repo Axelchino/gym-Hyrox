@@ -184,6 +184,36 @@ function TargetCurve({ label, values, tier, color }: { label: string; values: Re
   );
 }
 
+// A filling ring instead of a flat number in a box — "sessions done" and
+// "days to race" are both fundamentally progress-through-something, so
+// they should look like progress, not just read as a static stat.
+function ProgressRing({
+  value, size = 60, strokeWidth = 6, color, center, sublabel,
+}: { value: number; size?: number; strokeWidth?: number; color: string; center: string; sublabel: string }) {
+  const tokens = useThemeTokens();
+  const r = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(1, value));
+  const dashOffset = circumference * (1 - clamped);
+  return (
+    <div className="flex flex-col items-center">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--border-subtle)" strokeWidth={strokeWidth} />
+        <circle
+          cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={strokeWidth}
+          strokeDasharray={circumference} strokeDashoffset={dashOffset} strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          style={{ transition: 'stroke-dashoffset 0.4s ease' }}
+        />
+        <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central" style={{ fontSize: size * 0.24, fontWeight: 900, fill: tokens.text.primary }}>
+          {center}
+        </text>
+      </svg>
+      <div className="text-[10px] text-secondary font-mono mt-1 text-center whitespace-nowrap">{sublabel}</div>
+    </div>
+  );
+}
+
 export default function Hyrox() {
   const { user, isGuest } = useAuth();
   const navigate = useNavigate();
@@ -246,6 +276,9 @@ export default function Hyrox() {
   const todayISO = fmtDate(new Date());
   const today = days.find((d) => d.date === todayISO) || days.find((d) => d.date > todayISO) || days[days.length - 1];
   const daysToRace = Math.max(0, Math.round((new Date(RACE_DAY).getTime() - new Date(todayISO).getTime()) / 86400000));
+  const planStartISO = days[0]?.date ?? todayISO;
+  const totalPlanDays = Math.max(1, Math.round((new Date(RACE_DAY).getTime() - new Date(planStartISO).getTime()) / 86400000));
+  const planElapsedFraction = 1 - daysToRace / totalPlanDays;
   const doneCount = Object.values(done).filter(Boolean).length;
   const totalSessions = days.filter((d) => d.type !== 'rest').length;
   const curWeek = today.week;
@@ -399,10 +432,7 @@ export default function Hyrox() {
           <div className="text-xl font-black text-primary">HYROX ROAD</div>
           <div className="text-xs text-secondary font-mono mt-0.5">DOUBLES OPEN · DEC 3 2026 · {TIER_LABEL[tier]}</div>
         </div>
-        <div className="text-right">
-          <div className="text-2xl font-black text-primary">{daysToRace}</div>
-          <div className="text-[10px] text-secondary font-mono">DAYS TO RACE</div>
-        </div>
+        <ProgressRing value={planElapsedFraction} color="#E03131" center={String(daysToRace)} sublabel="DAYS TO RACE" />
       </div>
 
       {isHyroxAdmin(user?.email) && (
@@ -459,9 +489,11 @@ export default function Hyrox() {
             )}
           </div>
 
-          <div className="flex gap-2.5 mt-3.5">
+          <div className="flex gap-2.5 mt-3.5 items-stretch">
+            <div className="rounded-lg p-2.5 flex items-center justify-center" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
+              <ProgressRing value={totalSessions ? doneCount / totalSessions : 0} size={52} strokeWidth={5} color="#FFD500" center={String(doneCount)} sublabel={`OF ${totalSessions} DONE`} />
+            </div>
             {[
-              ['Sessions done', `${doneCount}/${totalSessions}`],
               ['This week', curWeek && curWeek <= 18 ? `${weeks[curWeek]?.km ?? '–'} km` : curWeek === 19 ? `${WEEK19.km} km` : 'prep'],
               ['Phase', curWeek ? phaseOf(curWeek).name.split('· ')[1] : 'Prep'],
             ].map(([l, v]) => (
@@ -819,9 +851,8 @@ export default function Hyrox() {
                   {partnerProgress ? (
                     <>
                       <div className="flex gap-2.5 mb-3">
-                        <div className="flex-1 rounded-lg p-2.5" style={{ background: tokens.surface.primary, border: '1px solid var(--border-subtle)' }}>
-                          <div className="text-lg font-black text-primary">{partnerDoneCount}/{totalSessions}</div>
-                          <div className="text-[10px] text-secondary font-mono">SESSIONS DONE</div>
+                        <div className="rounded-lg p-2.5 flex items-center justify-center" style={{ background: tokens.surface.primary, border: '1px solid var(--border-subtle)' }}>
+                          <ProgressRing value={totalSessions ? partnerDoneCount / totalSessions : 0} size={52} strokeWidth={5} color="#FFD500" center={String(partnerDoneCount)} sublabel={`OF ${totalSessions} DONE`} />
                         </div>
                       </div>
                       {partnerProgress.benchmarks.length > 0 && (
