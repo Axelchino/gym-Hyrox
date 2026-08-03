@@ -10,7 +10,7 @@ import { createGroup, joinGroup, leaveGroup, isHyroxAdmin } from '../services/hy
 import { TimeWheelPicker } from '../components/hyrox/TimeWheelPicker';
 import {
   buildPersonalDays, WEEKS_BY_TIER, TARGETS_BY_TIER, TIER_LABEL, TIER_RECOVERY_FLOOR, WEEKDAYS,
-  phaseOf, RULES, SHOP, STATIONS, RACE_DAY, fmtDate, pretty, makeICS, START, WEEK19,
+  phaseOf, RULES, SHOP, STATIONS, STATION_FOULS, RACE_DAY, fmtDate, pretty, makeICS, START, WEEK19,
 } from '../data/hyroxPlan';
 import type {
   HyroxDay, HyroxDayType, HyroxTier, HyroxWeek, PillarRole, RecoveryOption,
@@ -27,6 +27,18 @@ const PILLAR_LABELS: Record<PillarRole, string> = {
   lift: 'Lift day', qualityRun: 'Quality run', gym: 'Hyrox-gym day (Ski/sled/rower)', longOrSim: 'Long run / Sim day',
 };
 const PILLAR_ORDER: PillarRole[] = ['lift', 'qualityRun', 'gym', 'longOrSim'];
+const PILLAR_DESCRIPTIONS: Record<PillarRole, string> = {
+  lift: 'A full strength session — squats, deadlifts, carries, that kind of thing. Needs a rack/free weights: a home gym or any regular gym works.',
+  qualityRun: 'The hard/fast run of the week — intervals, threshold, or a time trial. Just needs road or a track, no equipment.',
+  gym: 'The one session that needs a Hyrox-affiliate gym — SkiErg, sled, rower. This is usually the day people are most limited on, so it\'s worth locking in first.',
+  longOrSim: 'Your longest run, or a race simulation (stations + running together) later in the plan. Road/trail, no special equipment until sim weeks.',
+};
+const PILLAR_COLOR: Record<PillarRole, string> = {
+  lift: '#5A5E68', qualityRun: '#2B6CB0', gym: '#B7791F', longOrSim: '#C05621',
+};
+const RECOVERY_COLOR: Record<RecoveryOption, string> = {
+  rest: '#8A8A9A', easyWalk: '#8A8A9A', easyRun: '#2B6CB0', easyLift: '#5A5E68',
+};
 const RECOVERY_LABELS: Record<RecoveryOption, string> = {
   rest: 'Rest', easyWalk: 'Easy walk / mobility', easyRun: 'Easy run', easyLift: 'Easy lift',
 };
@@ -475,6 +487,26 @@ export default function Hyrox() {
       {tab === 'setup' && !printMode && (
         <div className="no-print space-y-4">
           <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
+            <div className="text-sm font-black text-primary mb-1">YOUR WEEK AT A GLANCE</div>
+            <div className="text-xs text-secondary mb-3">How Mon–Sun looks with the settings below — updates live as you change them.</div>
+            <div className="grid grid-cols-7 gap-1.5">
+              {WEEKDAYS.map((dw) => {
+                const pillarRole = (Object.keys(pillarDayMap) as PillarRole[]).find((r) => pillarDayMap[r] === dw);
+                const option = pillarRole ? null : (recoveryChoices[dw] ?? 'rest');
+                const label = pillarRole ? PILLAR_LABELS[pillarRole] : RECOVERY_LABELS[option!];
+                const color = pillarRole ? PILLAR_COLOR[pillarRole] : RECOVERY_COLOR[option!];
+                return (
+                  <div key={dw} className="rounded-md p-1.5 text-center" style={{ background: tokens.surface.primary, border: '1px solid var(--border-subtle)' }}>
+                    <div className="text-[10px] font-bold text-secondary">{dw}</div>
+                    <div className="w-full rounded-full my-1" style={{ height: 5, background: color }} />
+                    <div className="text-[9px] leading-tight text-primary">{label}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
             <div className="text-sm font-black text-primary mb-1">AMBITION TIER</div>
             <div className="text-xs text-secondary mb-3">Changes pacing targets and how much rest is required. Top 5% is the expectation — downgrading needs a confirm.</div>
             <div className="flex gap-2">
@@ -513,6 +545,14 @@ export default function Hyrox() {
           <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
             <div className="text-sm font-black text-primary mb-1">CORE SESSIONS</div>
             <div className="text-xs text-secondary mb-3">Exactly one of each per week — pick which real day it lands on. Picking a day swaps it with whatever's currently there.</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+              {PILLAR_ORDER.map((role) => (
+                <div key={role} className="text-xs rounded-md p-2" style={{ background: tokens.surface.accent }}>
+                  <span className="font-bold text-primary">{PILLAR_LABELS[role]}</span>
+                  <div className="text-secondary mt-0.5">{PILLAR_DESCRIPTIONS[role]}</div>
+                </div>
+              ))}
+            </div>
             {PILLAR_ORDER.map((role) => (
               <label key={role} className="flex justify-between items-center py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                 <span className="text-sm font-semibold text-primary">{PILLAR_LABELS[role]}</span>
@@ -756,6 +796,23 @@ export default function Hyrox() {
               <div key={i} className="flex gap-2.5 py-1.5" style={{ borderBottom: i < RULES.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
                 <span style={{ color: TYPE_COLOR.race, fontWeight: 900 }}>!</span>
                 <span className="text-sm text-primary">{r}</span>
+              </div>
+            ))}
+          </div>
+          <div className="text-base font-black text-primary mb-2">FOULS TO WATCH FOR, BY STATION</div>
+          <div className="text-xs text-secondary mb-2">
+            Common Hyrox judging standards — worth a final check against the official rulebook before race day, since penalty specifics can change season to season.
+          </div>
+          <div className="rounded-lg p-3.5 mb-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
+            {STATION_FOULS.map(([station, fouls], si) => (
+              <div key={station} className="py-2" style={{ borderBottom: si < STATION_FOULS.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                <div className="text-sm font-bold text-primary mb-1">{station}</div>
+                {fouls.map((f, fi) => (
+                  <div key={fi} className="flex gap-2 py-0.5">
+                    <span style={{ color: TYPE_COLOR.race, fontWeight: 900 }}>!</span>
+                    <span className="text-xs text-secondary">{f}</span>
+                  </div>
+                ))}
               </div>
             ))}
           </div>

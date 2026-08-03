@@ -400,6 +400,50 @@ export const SHOP: string[] = [
 ];
 export const STATIONS: string[] = ['SkiErg 1000m', 'Sled Push 152kg', 'Sled Pull 103kg', 'Burpee Broad Jump 80m', 'Row 1000m', 'Farmers Carry 200m', 'Sandbag Lunges 100m', 'Wall Balls 100'];
 
+// Common Hyrox judging standards, organized per station — not pulled from
+// a live copy of the current official rulebook, so treat as a solid
+// starting reference and spot-check against the actual rulebook before
+// race day (penalty specifics do get revised season to season).
+export const STATION_FOULS: [string, string[]][] = [
+  ['RoxZone / Transitions', [
+    'Move through it — resting or standing still in the RoxZone can draw a warning.',
+    'Both partners must be present to start and finish each station together.',
+  ]],
+  ['SkiErg 1000m', [
+    'Full 1000m must show on the monitor before releasing the handle.',
+    'Letting go of the handle mid-pull to "reset" doesn\'t skip meters — the display is what counts.',
+  ]],
+  ['Sled Push 50m', [
+    'Sled must be pushed the complete lane length, staying within the marked lane.',
+    'Hands must stay on the sled push bars — no pulling or dragging it by other means.',
+  ]],
+  ['Sled Pull 50m', [
+    'Sled must travel the full distance within the lane using the rope.',
+    'Must remain behind the marked line while pulling — stepping over it can draw a warning.',
+  ]],
+  ['Burpee Broad Jump 80m', [
+    'Two-foot takeoff AND two-foot landing on every jump — single-leg jumps get no-repped.',
+    'Chest (or thighs, depending on current standard) must touch the ground on the burpee portion — no half-reps.',
+  ]],
+  ['Row 1000m', [
+    'Full 1000m must show on the monitor before releasing the handle.',
+    'Same as SkiErg — letting go early to "finish" doesn\'t count if the meters aren\'t there.',
+  ]],
+  ['Farmers Carry 200m', [
+    'Complete the full distance within the lane — repeatedly setting the weights down to rest can draw a warning.',
+    'Both implements must be carried, one in each hand, the whole way.',
+  ]],
+  ['Sandbag Lunges 100m', [
+    'Back knee must touch the floor on every single rep, or it\'s a no-rep.',
+    'Sandbag must stay on the shoulders/back throughout — dropping it doesn\'t pause the distance.',
+  ]],
+  ['Wall Balls 100 reps', [
+    'Ball must hit the marked target height (10ft) — short throws are no-reps, straight penalties, no warning.',
+    'Hips must break parallel (below knees) on every squat — half-squats get no-repped.',
+    'Ball must be caught, not allowed to bounce uncontrolled off the wall.',
+  ]],
+];
+
 /* ================= ICS ================= */
 const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,');
 export function makeICS(days: HyroxDay[], times: Record<string, string>): string {
