@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users, Copy, LogOut, Download, Printer } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -76,7 +76,7 @@ function DayRow({
         disabled={!checkable || printMode}
         className="rounded flex items-center justify-center text-xs font-black shrink-0"
         style={{
-          width: 26, height: 26,
+          width: 34, height: 34,
           border: `2px solid ${printMode ? '#131316' : checkable ? 'var(--text-primary)' : 'var(--border-medium)'}`,
           background: done ? '#FFD500' : 'transparent',
           color: '#131316',
@@ -158,6 +158,19 @@ export default function Hyrox() {
   const doneCount = Object.values(done).filter(Boolean).length;
   const totalSessions = days.filter((d) => d.type !== 'rest').length;
   const curWeek = today.week;
+
+  // Land on the Plan tab with this week already expanded instead of every
+  // week collapsed — the accordion-hunting was a real source of "checking
+  // things off isn't as easy as it should be."
+  useEffect(() => {
+    setOpenWeek((prev) => (prev === null ? curWeek : prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Recent past sessions still sitting unchecked — surfaced directly on
+  // the Plan tab so catching up (missed the app that day, followed the
+  // printed version, etc.) doesn't require hunting through old weeks.
+  const catchUpDays = days.filter((d) => d.date < todayISO && d.type !== 'rest' && !done[d.date]).slice(-8);
 
   const toggleDone = (date: string) => {
     saveProgress({ done: { ...done, [date]: !done[date] } });
@@ -406,6 +419,18 @@ export default function Hyrox() {
             </div>
             <div className="text-xs text-secondary mt-1.5">In Google Calendar: Settings → Import &amp; export → Import the .ics file.</div>
           </div>
+
+          {catchUpDays.length > 0 && (
+            <div className="no-print rounded-lg p-3 mb-3.5" style={{ background: tokens.surface.elevated, border: `1px solid ${TYPE_COLOR.race}` }}>
+              <div className="text-sm font-black text-primary mb-1">CATCH UP</div>
+              <div className="text-xs text-secondary mb-2">
+                Sessions from the last little while still unchecked — followed the printed plan, missed opening the app, whatever. Check off what you actually did.
+              </div>
+              {catchUpDays.map((d) => (
+                <DayRow key={d.date} d={d} showWeek done={!!done[d.date]} onToggle={toggleDone} />
+              ))}
+            </div>
+          )}
 
           {[...Array(20).keys()].map((w) => {
             if (w === 0) {
