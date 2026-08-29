@@ -220,16 +220,37 @@ export const WEEK0: { date: string; type: HyroxDay['type']; title: string; detai
   { date: '2026-07-26', type: 'rest', title: 'Rest', detail: 'Plan your week. Partner runs their 5K TT too — compare numbers.' },
 ];
 
+// Race day isn't always Thursday — different people in the same group can
+// have different real race dates within this same fixed week (different
+// heats of the same event weekend). So this content is authored relative
+// to race day (offset in days, 0 = race day) rather than a fixed weekday,
+// and getWeek19Days() below re-maps it onto whichever weekday the user's
+// actual race date falls on. Offsets beyond ±3 (only possible if race day
+// lands very early/late in the week) clamp to the nearest end — extra
+// letaper days just repeat the outermost taper/recovery content.
+const WEEK19_OFFSET_TEMPLATE: Record<number, DaySlot> = {
+  [-3]: ['run', 'Easy 25 min + strides', '4×20s @ race pace'],
+  [-2]: ['run', 'Primer session', '15-min WU · 3×2 min @ 4:30/km full recovery · ~5 min light touches at 2–3 stations. No soreness.'],
+  [-1]: ['rest', 'REST + carb load', 'Walk 15–20 min · carbs 7–8 g/kg · hydrate · kit check + split-sheet review with partner'],
+  0: ['race', '🏁 RACE DAY — HYROX', 'Carb breakfast ~3h pre. Dynamic WU + strides + short erg pulls. Run 1 feels EASY. Execute the split sheet.'],
+  1: ['rest', 'Recover', 'Walk, eat, celebrate'],
+  2: ['rest', 'Recover', ''],
+  3: ['rest', 'Recover', ''],
+};
+
+export function getWeek19Days(raceDate: string): Record<string, DaySlot> {
+  const raceDow = new Date(raceDate + 'T12:00:00').getDay(); // 0=Sun..6=Sat
+  const raceMonFirstIndex = (raceDow + 6) % 7; // Mon=0..Sun=6
+  const days: Record<string, DaySlot> = {};
+  WEEKDAYS.forEach((dw, i) => {
+    const offset = Math.max(-3, Math.min(3, i - raceMonFirstIndex));
+    days[dw] = WEEK19_OFFSET_TEMPLATE[offset];
+  });
+  return days;
+}
+
 export const WEEK19: { km: number; race: true; days: Record<string, DaySlot> } = {
-  km: 15, race: true, days: {
-    Mon: ['run', 'Easy 25 min + strides', '4×20s @ race pace'],
-    Tue: ['run', 'Primer session', '15-min WU · 3×2 min @ 4:30/km full recovery · ~5 min light touches at 2–3 stations. No soreness.'],
-    Wed: ['rest', 'REST + carb load', 'Walk 15–20 min · carbs 7–8 g/kg · hydrate · kit check + split-sheet review with partner'],
-    Thu: ['race', '🏁 RACE DAY — HYROX', 'Carb breakfast ~3h pre. Dynamic WU + strides + short erg pulls. Run 1 feels EASY. Execute the split sheet.'],
-    Fri: ['rest', 'Recover', 'Walk, eat, celebrate'],
-    Sat: ['rest', 'Recover', ''],
-    Sun: ['rest', 'Recover', ''],
-  },
+  km: 15, race: true, days: getWeek19Days(RACE_DAY),
 };
 
 /* ================= TIER SCALING ================= */
@@ -320,10 +341,12 @@ export function buildPersonalDays(
   pillarDayMap: PillarDayMap = DEFAULT_PILLAR_DAY_MAP,
   recoveryChoices: RecoveryChoices = DEFAULT_RECOVERY_CHOICES,
   tier: HyroxTier = 'top5',
+  raceDate: string = RACE_DAY,
 ): HyroxDay[] {
   const weeks = WEEKS_BY_TIER[tier];
   const dayToPillar = reversePillarMap(pillarDayMap);
   const days: HyroxDay[] = WEEK0.map((d) => ({ ...d, week: 0, dow: DOW[new Date(d.date + 'T12:00:00').getDay()] }));
+  const week19Days = getWeek19Days(raceDate);
 
   for (let w = 1; w <= 19; w++) {
     WEEKDAYS.forEach((dw, i) => {
@@ -334,7 +357,7 @@ export function buildPersonalDays(
 
       let slot: DaySlot;
       if (w === 19) {
-        slot = WEEK19.days[dw];
+        slot = week19Days[dw];
       } else {
         const pillarRole = dayToPillar[dw];
         if (pillarRole) {

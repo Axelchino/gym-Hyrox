@@ -51,7 +51,7 @@ export function useHyroxProgress(userId: string | null | undefined, options: { i
 export function useSaveHyroxProgress(userId: string | null | undefined) {
   const queryClient = useQueryClient();
 
-  return async (patch: Partial<Pick<HyroxProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'pillarDayMap' | 'recoveryChoices' | 'tier'>>) => {
+  return async (patch: Partial<Pick<HyroxProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'pillarDayMap' | 'recoveryChoices' | 'tier' | 'raceDate' | 'planId' | 'targetTotalSeconds'>>) => {
     await upsertMyProgress(patch);
     if (userId) queryClient.invalidateQueries({ queryKey: ['hyroxProgress', userId] });
   };

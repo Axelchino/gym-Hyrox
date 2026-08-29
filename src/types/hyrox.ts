@@ -19,6 +19,12 @@ export type PillarRole = 'lift' | 'qualityRun' | 'gym' | 'longOrSim';
 export type RecoveryOption = 'rest' | 'easyWalk' | 'easyRun' | 'easyLift';
 export type HyroxTier = 'top5' | 'top10' | 'top20';
 
+// Which full training program a person is following. 'doubles' is the
+// original Top5/10/20% percentile-tier plan; 'hybrid' is the Sub-60 +
+// bodybuilding regime — a structurally different plan, not a variant of
+// doubles, so this is a hard branch rather than another tier.
+export type HyroxPlanId = 'doubles' | 'hybrid';
+
 export type DaySlot = [HyroxDayType, string, string];
 
 export interface HyroxWeek {
@@ -71,6 +77,15 @@ export interface HyroxProgress {
   pillarDayMap: PillarDayMap;
   recoveryChoices: RecoveryChoices;
   tier: HyroxTier;
+  // ISO date (YYYY-MM-DD). Different people in the same group can have
+  // different real race dates (e.g. different heats of the same event
+  // weekend) — this is per-user, not a shared constant.
+  raceDate: string;
+  planId: HyroxPlanId;
+  // Hybrid plan only: target total race time in seconds (e.g. 3540 = 59:00),
+  // used to scale its running/station targets. Meaningless for 'doubles'
+  // (which uses `tier` instead) but kept on the same shared row.
+  targetTotalSeconds: number;
   updatedAt: string;
 }
 
@@ -89,6 +104,11 @@ export const DEFAULT_RECOVERY_CHOICES: RecoveryChoices = {
   Sun: 'rest',
 };
 
+// Must match the default race day baked into hyroxPlan.ts's Week 19 content
+// (RACE_DAY there) — kept as a plain literal here rather than a cross-import
+// to avoid a data/types circular dependency.
+export const DEFAULT_RACE_DATE = '2026-12-03';
+
 export const HYROX_PROGRESS_EMPTY: Omit<HyroxProgress, 'userId' | 'updatedAt'> = {
   done: {},
   times: { Mon: '17:30', Tue: '17:30', Wed: '17:30', Thu: '17:30', Fri: '17:30', Sat: '08:00', Sun: '08:00' },
@@ -97,6 +117,9 @@ export const HYROX_PROGRESS_EMPTY: Omit<HyroxProgress, 'userId' | 'updatedAt'> =
   pillarDayMap: DEFAULT_PILLAR_DAY_MAP,
   recoveryChoices: DEFAULT_RECOVERY_CHOICES,
   tier: 'top5',
+  raceDate: DEFAULT_RACE_DATE,
+  planId: 'doubles',
+  targetTotalSeconds: 3540, // 59:00 — the hybrid plan's sub-60 baseline
 };
 
 export interface HyroxAdminGroupSummary {

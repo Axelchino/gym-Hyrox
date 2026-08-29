@@ -10,7 +10,7 @@
 import { supabase } from './supabase';
 import { getCurrentUserId } from './supabaseDataService';
 import type { HyroxAdminGroupSummary, HyroxBenchmark, HyroxGroup, HyroxGroupMember, HyroxProgress } from '../types/hyrox';
-import { HYROX_PROGRESS_EMPTY, DEFAULT_PILLAR_DAY_MAP, DEFAULT_RECOVERY_CHOICES } from '../types/hyrox';
+import { HYROX_PROGRESS_EMPTY, DEFAULT_PILLAR_DAY_MAP, DEFAULT_RECOVERY_CHOICES, DEFAULT_RACE_DATE } from '../types/hyrox';
 import { ALL_DAYS } from '../data/hyroxPlan';
 
 const ADMIN_EMAIL = 'axelcv150@gmail.com';
@@ -36,6 +36,9 @@ function mapProgress(row: any): HyroxProgress {
     pillarDayMap: { ...DEFAULT_PILLAR_DAY_MAP, ...(row.pillar_day_map ?? {}) },
     recoveryChoices: { ...DEFAULT_RECOVERY_CHOICES, ...(row.recovery_choices ?? {}) },
     tier: row.tier ?? 'top5',
+    raceDate: row.race_date ?? DEFAULT_RACE_DATE,
+    planId: row.plan_id ?? 'doubles',
+    targetTotalSeconds: row.target_total_seconds ?? 3540,
     updatedAt: row.updated_at,
   };
 }
@@ -148,7 +151,7 @@ export async function getProgress(userId: string): Promise<HyroxProgress> {
 }
 
 /** Upsert the current user's own progress. Partial patches are merged client-side by the caller. */
-type ProgressPatch = Partial<Pick<HyroxProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'pillarDayMap' | 'recoveryChoices' | 'tier'>>;
+type ProgressPatch = Partial<Pick<HyroxProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'pillarDayMap' | 'recoveryChoices' | 'tier' | 'raceDate' | 'planId' | 'targetTotalSeconds'>>;
 
 export async function upsertMyProgress(patch: ProgressPatch): Promise<void> {
   const userId = await getCurrentUserId();
@@ -161,6 +164,9 @@ export async function upsertMyProgress(patch: ProgressPatch): Promise<void> {
   if (patch.pillarDayMap !== undefined) row.pillar_day_map = patch.pillarDayMap;
   if (patch.recoveryChoices !== undefined) row.recovery_choices = patch.recoveryChoices;
   if (patch.tier !== undefined) row.tier = patch.tier;
+  if (patch.raceDate !== undefined) row.race_date = patch.raceDate;
+  if (patch.planId !== undefined) row.plan_id = patch.planId;
+  if (patch.targetTotalSeconds !== undefined) row.target_total_seconds = patch.targetTotalSeconds;
 
   const { error } = await supabase
     .from('hyrox_progress')

@@ -8,21 +8,18 @@ import { useHyroxGuestProgress } from '../hooks/useHyroxGuestProgress';
 import { useHyroxGroup, useInvalidateHyroxGroup } from '../hooks/useHyroxGroup';
 import { createGroup, joinGroup, leaveGroup, isHyroxAdmin } from '../services/hyroxService';
 import { TimeWheelPicker } from '../components/hyrox/TimeWheelPicker';
+import { DayRow, TYPE_COLOR, TYPE_LABEL } from '../components/hyrox/DayRow';
+import { ProgressRing } from '../components/hyrox/ProgressRing';
+import { StationFoulCard } from '../components/hyrox/StationDiagram';
 import {
   buildPersonalDays, WEEKS_BY_TIER, TARGETS_BY_TIER, TIER_LABEL, TIER_RECOVERY_FLOOR, WEEKDAYS,
   phaseOf, RULES, SHOP, STATIONS, STATION_FOULS, RACE_DAY, fmtDate, pretty, makeICS, START, WEEK19,
 } from '../data/hyroxPlan';
 import type {
-  HyroxDay, HyroxDayType, HyroxTier, HyroxWeek, PillarRole, RecoveryOption,
+  HyroxTier, HyroxWeek, PillarRole, RecoveryOption,
 } from '../types/hyrox';
 import { DEFAULT_PILLAR_DAY_MAP, DEFAULT_RECOVERY_CHOICES } from '../types/hyrox';
 
-const TYPE_COLOR: Record<HyroxDayType, string> = {
-  run: '#2B6CB0', strength: '#5A5E68', gym: '#B7791F', sim: '#C05621', rest: '#8A8A9A', race: '#E03131',
-};
-const TYPE_LABEL: Record<HyroxDayType, string> = {
-  run: 'RUN', strength: 'LIFT', gym: 'GYM', sim: 'SIM', rest: 'REST', race: 'RACE',
-};
 const PILLAR_LABELS: Record<PillarRole, string> = {
   lift: 'Lift day', qualityRun: 'Quality run', gym: 'Hyrox-gym day (Ski/sled/rower)', longOrSim: 'Long run / Sim day',
 };
@@ -71,48 +68,6 @@ const RECOVERY_DESCRIPTIONS: Record<RecoveryOption, string> = {
 };
 
 type Tab = 'today' | 'plan' | 'track' | 'group' | 'race' | 'setup';
-
-function DayRow({
-  d, showWeek, done, onToggle, printMode,
-}: { d: HyroxDay; showWeek?: boolean; done: boolean; onToggle?: (date: string) => void; printMode?: boolean }) {
-  // In print, every day gets a real checkbox to physically tick off with a
-  // pen — rest days aren't excluded there the way the on-screen toggle
-  // excludes them (nothing to "mark done" digitally for a rest day, but on
-  // paper you still want to check it off as you go through the week).
-  const checkable = printMode || (!!onToggle && d.type !== 'rest');
-  return (
-    <div className="flex gap-3 py-2.5 items-start" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-      <button
-        onClick={() => checkable && !printMode && onToggle?.(d.date)}
-        aria-label="mark done"
-        disabled={!checkable || printMode}
-        className="rounded flex items-center justify-center text-xs font-black shrink-0"
-        style={{
-          width: 34, height: 34,
-          border: `2px solid ${printMode ? '#131316' : checkable ? 'var(--text-primary)' : 'var(--border-medium)'}`,
-          background: done ? '#FFD500' : 'transparent',
-          color: '#131316',
-          cursor: checkable && !printMode ? 'pointer' : 'default',
-        }}
-      >
-        {done ? '✓' : ''}
-      </button>
-      <div className="flex-1 min-w-0">
-        <div className="flex gap-2 items-baseline flex-wrap">
-          <span className="text-[11px] text-secondary font-mono">{pretty(d.date)}{showWeek ? ` · W${d.week}` : ''}</span>
-          <span
-            className="badge-chip text-[10px] font-bold px-1.5 py-0.5 rounded text-white"
-            style={{ background: TYPE_COLOR[d.type] }}
-          >
-            {TYPE_LABEL[d.type]}
-          </span>
-        </div>
-        <div className="font-bold text-sm text-primary" style={{ textDecoration: done ? 'line-through' : 'none' }}>{d.title}</div>
-        {d.detail ? <div className="text-xs text-secondary mt-0.5">{d.detail}</div> : null}
-      </div>
-    </div>
-  );
-}
 
 // Where each tier's target sits along an illustrative distribution — not
 // pulled from a real race database (unlike hyresult.com, which is what
@@ -184,36 +139,6 @@ function TargetCurve({ label, values, tier, color }: { label: string; values: Re
   );
 }
 
-// A filling ring instead of a flat number in a box — "sessions done" and
-// "days to race" are both fundamentally progress-through-something, so
-// they should look like progress, not just read as a static stat.
-function ProgressRing({
-  value, size = 60, strokeWidth = 6, color, center, sublabel,
-}: { value: number; size?: number; strokeWidth?: number; color: string; center: string; sublabel: string }) {
-  const tokens = useThemeTokens();
-  const r = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * r;
-  const clamped = Math.max(0, Math.min(1, value));
-  const dashOffset = circumference * (1 - clamped);
-  return (
-    <div className="flex flex-col items-center">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--border-subtle)" strokeWidth={strokeWidth} />
-        <circle
-          cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={strokeWidth}
-          strokeDasharray={circumference} strokeDashoffset={dashOffset} strokeLinecap="round"
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          style={{ transition: 'stroke-dashoffset 0.4s ease' }}
-        />
-        <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central" style={{ fontSize: size * 0.24, fontWeight: 900, fill: tokens.text.primary }}>
-          {center}
-        </text>
-      </svg>
-      <div className="text-[10px] text-secondary font-mono mt-1 text-center whitespace-nowrap">{sublabel}</div>
-    </div>
-  );
-}
-
 export default function Hyrox() {
   const { user, isGuest } = useAuth();
   const navigate = useNavigate();
@@ -245,8 +170,9 @@ export default function Hyrox() {
   const pillarDayMap = user ? (progress?.pillarDayMap ?? DEFAULT_PILLAR_DAY_MAP) : guestProgress.pillarDayMap;
   const recoveryChoices = user ? (progress?.recoveryChoices ?? DEFAULT_RECOVERY_CHOICES) : guestProgress.recoveryChoices;
   const tier: HyroxTier = user ? (progress?.tier ?? 'top5') : guestProgress.tier;
+  const raceDate = user ? (progress?.raceDate ?? RACE_DAY) : guestProgress.raceDate;
 
-  const saveProgress = (patch: Partial<Pick<typeof guestProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'pillarDayMap' | 'recoveryChoices' | 'tier'>>) => {
+  const saveProgress = (patch: Partial<Pick<typeof guestProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'pillarDayMap' | 'recoveryChoices' | 'tier' | 'raceDate'>>) => {
     if (user) { void saveProgressRemote(patch); } else { saveGuestProgress(patch); }
   };
 
@@ -266,8 +192,8 @@ export default function Hyrox() {
     [pillarDayMap],
   );
   const days = useMemo(
-    () => buildPersonalDays(pillarDayMap, recoveryChoices, tier),
-    [pillarDayMap, recoveryChoices, tier],
+    () => buildPersonalDays(pillarDayMap, recoveryChoices, tier, raceDate),
+    [pillarDayMap, recoveryChoices, tier, raceDate],
   );
 
   const partner = groupInfo?.members.find((m) => m.userId !== user?.id);
@@ -275,9 +201,9 @@ export default function Hyrox() {
 
   const todayISO = fmtDate(new Date());
   const today = days.find((d) => d.date === todayISO) || days.find((d) => d.date > todayISO) || days[days.length - 1];
-  const daysToRace = Math.max(0, Math.round((new Date(RACE_DAY).getTime() - new Date(todayISO).getTime()) / 86400000));
+  const daysToRace = Math.max(0, Math.round((new Date(raceDate).getTime() - new Date(todayISO).getTime()) / 86400000));
   const planStartISO = days[0]?.date ?? todayISO;
-  const totalPlanDays = Math.max(1, Math.round((new Date(RACE_DAY).getTime() - new Date(planStartISO).getTime()) / 86400000));
+  const totalPlanDays = Math.max(1, Math.round((new Date(raceDate).getTime() - new Date(planStartISO).getTime()) / 86400000));
   const planElapsedFraction = 1 - daysToRace / totalPlanDays;
   const doneCount = Object.values(done).filter(Boolean).length;
   const totalSessions = days.filter((d) => d.type !== 'rest').length;
@@ -430,16 +356,21 @@ export default function Hyrox() {
       <div className="no-print flex items-center justify-between rounded-lg p-4 mb-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
         <div>
           <div className="text-xl font-black text-primary">HYROX ROAD</div>
-          <div className="text-xs text-secondary font-mono mt-0.5">DOUBLES OPEN · DEC 3 2026 · {TIER_LABEL[tier]}</div>
+          <div className="text-xs text-secondary font-mono mt-0.5">DOUBLES OPEN · {new Date(raceDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase()} · {TIER_LABEL[tier]}</div>
         </div>
         <ProgressRing value={planElapsedFraction} color="#E03131" center={String(daysToRace)} sublabel="DAYS TO RACE" />
       </div>
 
-      {isHyroxAdmin(user?.email) && (
-        <button onClick={() => navigate('/hyrox/admin')} className="no-print text-xs text-secondary underline mb-3">
-          View all groups (admin)
+      <div className="no-print flex gap-3 mb-3">
+        <button onClick={() => navigate('/hyrox?choose=1')} className="text-xs text-secondary underline">
+          Switch plan
         </button>
-      )}
+        {isHyroxAdmin(user?.email) && (
+          <button onClick={() => navigate('/hyrox/admin')} className="text-xs text-secondary underline">
+            View all groups (admin)
+          </button>
+        )}
+      </div>
 
       {isGuest && (
         <div className="no-print rounded-lg p-3 mb-4 text-sm" style={{ background: tokens.chip.background, color: tokens.chip.text, border: `1px solid ${tokens.chip.border}` }}>
@@ -597,6 +528,18 @@ export default function Hyrox() {
       {/* SETUP */}
       {tab === 'setup' && !printMode && (
         <div className="no-print space-y-4">
+          <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
+            <div className="text-sm font-black text-primary mb-1">YOUR RACE DATE</div>
+            <div className="text-xs text-secondary mb-3">Different heat than your training partner? Set your own actual race day — the taper week and countdown follow it.</div>
+            <input
+              type="date"
+              value={raceDate}
+              onChange={(e) => e.target.value && saveProgress({ raceDate: e.target.value })}
+              className="px-2 py-1.5 rounded text-sm"
+              style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: tokens.text.primary }}
+            />
+          </div>
+
           <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
             <div className="text-sm font-black text-primary mb-1">YOUR WEEK AT A GLANCE</div>
             <div className="text-xs text-secondary mb-3">How Mon–Sun looks with the settings below — updates live as you change them.</div>
@@ -911,16 +854,8 @@ export default function Hyrox() {
             Common Hyrox judging standards — worth a final check against the official rulebook before race day, since penalty specifics can change season to season.
           </div>
           <div className="rounded-lg p-3.5 mb-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
-            {STATION_FOULS.map(([station, fouls], si) => (
-              <div key={station} className="py-2" style={{ borderBottom: si < STATION_FOULS.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
-                <div className="text-sm font-bold text-primary mb-1">{station}</div>
-                {fouls.map((f, fi) => (
-                  <div key={fi} className="flex gap-2 py-0.5">
-                    <span style={{ color: TYPE_COLOR.race, fontWeight: 900 }}>!</span>
-                    <span className="text-xs text-secondary">{f}</span>
-                  </div>
-                ))}
-              </div>
+            {STATION_FOULS.map(([station, fouls]) => (
+              <StationFoulCard key={station} station={station} fouls={fouls} />
             ))}
           </div>
           <div className="text-base font-black text-primary mb-2">STILL TO BUY</div>
