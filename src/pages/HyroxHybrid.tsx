@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users, Copy, LogOut, Download, Printer, Flame } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -59,6 +59,21 @@ export default function HyroxHybrid() {
   const targetTotalSeconds = user ? (progress?.targetTotalSeconds ?? HYBRID_BASELINE_SECONDS) : guestProgress.targetTotalSeconds;
   const planStartDate = user ? (progress?.planStartDate ?? '') : guestProgress.planStartDate;
 
+  // The slider drives every pace/target on this page, and for signed-in
+  // users a save is a full Supabase round-trip — binding the slider
+  // straight to that remote-backed value made every drag tick wait on
+  // the network before the UI moved, which read as laggy/clunky.
+  // liveTargetSeconds updates instantly and locally; the actual save is
+  // debounced so dragging doesn't fire a write per tick.
+  const [liveTargetSeconds, setLiveTargetSeconds] = useState(targetTotalSeconds);
+  const targetSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    setLiveTargetSeconds(targetTotalSeconds);
+  }, [targetTotalSeconds]);
+  useEffect(() => () => {
+    if (targetSaveTimeout.current) clearTimeout(targetSaveTimeout.current);
+  }, []);
+
   const saveProgress = (patch: Partial<Pick<typeof guestProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'raceDate' | 'targetTotalSeconds' | 'planStartDate'>>) => {
     if (user) {
       saveProgressRemote(patch).catch((err) => console.error('Failed to save Hyrox progress:', err));
@@ -79,10 +94,10 @@ export default function HyroxHybrid() {
   }, [planStartDate, user, progress]);
 
   const days = useMemo(
-    () => buildHybridPersonalDays(raceDate, targetTotalSeconds, planStartDate),
-    [raceDate, targetTotalSeconds, planStartDate],
+    () => buildHybridPersonalDays(raceDate, liveTargetSeconds, planStartDate),
+    [raceDate, liveTargetSeconds, planStartDate],
   );
-  const targets = useMemo(() => hybridTargetsForTime(targetTotalSeconds), [targetTotalSeconds]);
+  const targets = useMemo(() => hybridTargetsForTime(liveTargetSeconds), [liveTargetSeconds]);
 
   const partner = groupInfo?.members.find((m) => m.userId !== user?.id);
   const { data: partnerProgress } = useHyroxProgress(partner?.userId, { isPartner: true });
@@ -114,7 +129,9 @@ export default function HyroxHybrid() {
   };
   const setTargetTime = (seconds: number) => {
     const clamped = Math.max(HYBRID_MIN_SECONDS, Math.min(HYBRID_MAX_SECONDS, seconds));
-    saveProgress({ targetTotalSeconds: clamped });
+    setLiveTargetSeconds(clamped);
+    if (targetSaveTimeout.current) clearTimeout(targetSaveTimeout.current);
+    targetSaveTimeout.current = setTimeout(() => saveProgress({ targetTotalSeconds: clamped }), 400);
   };
 
   const download = (content: string, name: string) => {
@@ -363,7 +380,7 @@ export default function HyroxHybrid() {
             <div className="text-3xl font-black text-primary mb-2" style={{ color: '#E03131' }}>{targets.totalLabel}</div>
             <input
               type="range" min={HYBRID_MIN_SECONDS} max={HYBRID_MAX_SECONDS} step={15}
-              value={targetTotalSeconds}
+              value={liveTargetSeconds}
               onChange={(e) => setTargetTime(parseInt(e.target.value, 10))}
               className="w-full mb-3"
             />
@@ -373,7 +390,7 @@ export default function HyroxHybrid() {
                   key={secs}
                   onClick={() => setTargetTime(secs)}
                   className="px-2.5 py-1 rounded-full text-xs font-semibold"
-                  style={targetTotalSeconds === secs
+                  style={liveTargetSeconds === secs
                     ? { background: '#E03131', color: '#fff' }
                     : { background: 'transparent', color: tokens.text.secondary, border: '1px solid var(--border-subtle)' }}
                 >

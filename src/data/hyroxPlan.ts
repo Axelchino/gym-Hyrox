@@ -553,6 +553,13 @@ export const STATION_FOULS: [string, StationFoul[]][] = [
 /* ================= ICS ================= */
 const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,');
 export function makeICS(days: HyroxDay[], times: Record<string, string>): string {
+  // Required by RFC 5545 on every VEVENT — some calendar apps (Google
+  // Calendar's "Unable to launch event" among them) refuse to open
+  // events missing it.
+  const now = new Date();
+  const dtstamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}` +
+    `T${String(now.getUTCHours()).padStart(2, '0')}${String(now.getUTCMinutes()).padStart(2, '0')}${String(now.getUTCSeconds()).padStart(2, '0')}Z`;
+
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//HYROX Planner//EN', 'CALSCALE:GREGORIAN'];
   days.forEach((d) => {
     if (d.type === 'rest' && !d.title.includes('carb')) return;
@@ -560,9 +567,17 @@ export function makeICS(days: HyroxDay[], times: Record<string, string>): string
     const dur = d.type === 'sim' ? 150 : d.type === 'race' ? 240 : 75;
     const [hh, mm] = [parseInt(t.slice(0, 2)), parseInt(t.slice(2))];
     const endM = hh * 60 + mm + dur;
-    const end = `${String(Math.floor(endM / 60) % 24).padStart(2, '0')}${String(endM % 60).padStart(2, '0')}`;
+    // A late start + long session can cross midnight. Wrapping the hour
+    // back to 00:xx on the *same* date (the old behavior) produced a
+    // DTEND earlier than DTSTART — an invalid event most calendar apps
+    // (including the one behind this exact "unable to launch" error)
+    // refuse to open. Roll the end onto the next calendar day instead.
+    const endDayOffset = Math.floor(endM / 1440);
+    const endMinutesOfDay = endM % 1440;
+    const end = `${String(Math.floor(endMinutesOfDay / 60)).padStart(2, '0')}${String(endMinutesOfDay % 60).padStart(2, '0')}`;
     const ds = d.date.replace(/-/g, '');
-    lines.push('BEGIN:VEVENT', `UID:hyrox-${d.date}@planner`, `DTSTART:${ds}T${t}00`, `DTEND:${ds}T${end}00`,
+    const endDs = endDayOffset > 0 ? fmtDate(addDays(new Date(d.date + 'T00:00:00'), endDayOffset)).replace(/-/g, '') : ds;
+    lines.push('BEGIN:VEVENT', `UID:hyrox-${d.date}@planner`, `DTSTAMP:${dtstamp}`, `DTSTART:${ds}T${t}00`, `DTEND:${endDs}T${end}00`,
       `SUMMARY:${esc((d.type === 'race' ? '' : `HYROX W${d.week}: `) + d.title)}`,
       `DESCRIPTION:${esc(d.detail || '')}`, 'END:VEVENT');
   });
