@@ -13,7 +13,7 @@ import { ProgressRing } from '../components/hyrox/ProgressRing';
 import { StationShowcase } from '../components/hyrox/StationShowcase';
 import {
   buildPersonalDays, WEEKS_BY_TIER, TARGETS_BY_TIER, TIER_LABEL, TIER_RECOVERY_FLOOR, WEEKDAYS,
-  phaseOf, RULES, SHOP, STATIONS, STATION_FOULS, RACE_DAY, fmtDate, pretty, makeICS, START, WEEK19,
+  phaseOf, RULES, STATIONS, STATION_FOULS, RACE_DAY, fmtDate, pretty, makeICS, START, WEEK19,
   computeDoublesSchedule, personalToOriginalWeek,
 } from '../data/hyroxPlan';
 import type {
@@ -899,18 +899,6 @@ export default function Hyrox() {
             Common Hyrox judging standards — worth a final check against the official rulebook before race day, since penalty specifics can change season to season.
           </div>
           <StationShowcase stations={STATION_FOULS} />
-          <div className="text-base font-black text-primary mb-2 mt-4">STILL TO BUY</div>
-          <div className="rounded-lg p-3.5" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
-            {SHOP.map((s) => {
-              const key = 'shop:' + s;
-              return (
-                <label key={s} className="flex gap-2.5 items-center py-1.5 cursor-pointer">
-                  <input type="checkbox" checked={!!done[key]} onChange={() => toggleDone(key)} style={{ width: 16, height: 16 }} />
-                  <span className="text-sm text-primary" style={{ textDecoration: done[key] ? 'line-through' : 'none', opacity: done[key] ? 0.6 : 1 }}>{s}</span>
-                </label>
-              );
-            })}
-          </div>
         </div>
       )}
     </div>

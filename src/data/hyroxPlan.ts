@@ -484,11 +484,6 @@ export const RULES: string[] = [
   'Lunges: back knee touches floor every rep. Burpees: two-foot takeoff AND landing. Wall balls: hips below knees, hit the target — no warnings there, straight penalties.',
   'Transitions are a station: move through the RoxZone, never rest in it.',
 ];
-export const SHOP: string[] = [
-  '20kg sandbag (~$50–80)', '6kg / 14lb wall ball + 10ft wall mark', 'GPS watch (if none)',
-  'Technical socks ×4', 'Liquid chalk', 'Anti-chafe balm', 'Energy gels — test 2–3 brands in training',
-  'Gym membership (SkiErg / sled / rower)', '2nd pair of race shoes ~Week 12',
-];
 export const STATIONS: string[] = ['SkiErg 1000m', 'Sled Push 152kg', 'Sled Pull 103kg', 'Burpee Broad Jump 80m', 'Row 1000m', 'Farmers Carry 200m', 'Sandbag Lunges 100m', 'Wall Balls 100'];
 
 // Common Hyrox judging standards, organized per station — not pulled from
