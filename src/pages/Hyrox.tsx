@@ -11,6 +11,7 @@ import { TimeWheelPicker } from '../components/hyrox/TimeWheelPicker';
 import { DayRow, TYPE_COLOR, TYPE_LABEL } from '../components/hyrox/DayRow';
 import { ProgressRing } from '../components/hyrox/ProgressRing';
 import { StationShowcase } from '../components/hyrox/StationShowcase';
+import { StationBenchmarkCurve, parseMMSS } from '../components/hyrox/StationBenchmarkCurve';
 import {
   buildPersonalDays, WEEKS_BY_TIER, TARGETS_BY_TIER, TIER_LABEL, TIER_RECOVERY_FLOOR, WEEKDAYS,
   phaseOf, RULES, STATIONS, STATION_FOULS, RACE_DAY, fmtDate, pretty, makeICS, START, WEEK19,
@@ -773,18 +774,25 @@ export default function Hyrox() {
 
           <div className="text-base font-black text-primary mb-2">STATION BESTS <span className="text-xs text-secondary font-normal">(your half, from sims)</span></div>
           <div className="rounded-lg p-3" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
-            {STATIONS.map((s) => (
-              <div key={s} className="flex justify-between items-center py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                <span className="text-sm font-semibold text-primary">{s}</span>
-                <input
-                  type="text" placeholder="—:—"
-                  value={stationDraft[s] ?? stations[s] ?? ''}
-                  onChange={(e) => setStationDraft({ ...stationDraft, [s]: e.target.value })}
-                  onBlur={(e) => saveProgress({ stations: { ...stations, [s]: e.target.value } })}
-                  className="w-20 text-right px-1.5 py-1 rounded text-sm font-mono" style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)' }}
-                />
-              </div>
-            ))}
+            {STATIONS.map((s) => {
+              const liveValue = stationDraft[s] ?? stations[s] ?? '';
+              const isCheckpoint = s === 'Wall Balls 100'; // real-data curve checkpoint — rest of the stations get this once confirmed
+              return (
+                <div key={s} className="py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-semibold text-primary">{s}</span>
+                    <input
+                      type="text" placeholder="—:—"
+                      value={liveValue}
+                      onChange={(e) => setStationDraft({ ...stationDraft, [s]: e.target.value })}
+                      onBlur={(e) => saveProgress({ stations: { ...stations, [s]: e.target.value } })}
+                      className="w-20 text-right px-1.5 py-1 rounded text-sm font-mono" style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)' }}
+                    />
+                  </div>
+                  {isCheckpoint && <StationBenchmarkCurve station={s} seconds={parseMMSS(liveValue)} />}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
