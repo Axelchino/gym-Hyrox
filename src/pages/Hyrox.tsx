@@ -15,7 +15,7 @@ import { StationBenchmarkCurve, parseMMSS } from '../components/hyrox/StationBen
 import { HyroxOnboarding } from '../components/hyrox/HyroxOnboarding';
 import {
   buildPersonalDays, weeksForTarget, targetsForSeconds, recoveryFloorForTarget,
-  doublesFinishPercentile, formatMMSS, DOUBLES_FINISH_PERCENTILES,
+  doublesFinishPercentile, formatMMSS, DOUBLES_FINISH_DENSITY, interpolatePoints,
   DOUBLES_BASELINE_SECONDS, DOUBLES_MIN_SECONDS, DOUBLES_MAX_SECONDS,
   WEEKDAYS, phaseOf, RULES, STATIONS, STATION_FOULS, RACE_DAY, fmtDate, pretty, makeICS, START, WEEK19,
   computeDoublesSchedule, personalToOriginalWeek,
@@ -81,26 +81,30 @@ function smoothPathD(points: [number, number][]): string {
 }
 
 /**
- * Real cumulative finish-time distribution (percentile vs. time), built
- * from the 7 actual sampled brackets in DOUBLES_FINISH_PERCENTILES —
- * not a fabricated bell curve. Replaces the old 5-card TargetCurve grid,
- * which plotted every metric on the same invented Gaussian regardless
- * of its real shape.
+ * Real finish-time density — most teams cluster around a common time,
+ * tapering at both ends, built from the actual percentile brackets in
+ * DOUBLES_FINISH_DENSITY (finite-differenced, not an invented Gaussian).
+ * Purely a chart, not a control — the actual slider lives above this.
+ * The real data only covers DOUBLES_BASELINE_SECONDS..DOUBLES_MAX_SECONDS
+ * (Top 5%..Top 95%); a target faster than that shows honest "off the
+ * chart" text instead of a fabricated percentile.
  */
 function DoublesFinishCurve({ targetSeconds }: { targetSeconds: number }) {
   const tokens = useThemeTokens();
-  const width = 300, height = 90, padTop = 8, baseline = height - 18;
-  const toSvgX = (seconds: number) => ((seconds - DOUBLES_MIN_SECONDS) / (DOUBLES_MAX_SECONDS - DOUBLES_MIN_SECONDS)) * width;
-  const toSvgY = (pct: number) => baseline - (pct / 100) * (baseline - padTop);
+  const width = 480, height = 130, padTop = 10, baseline = height - 22;
+  const toSvgX = (seconds: number) => ((seconds - DOUBLES_BASELINE_SECONDS) / (DOUBLES_MAX_SECONDS - DOUBLES_BASELINE_SECONDS)) * width;
+  const toSvgY = (height100: number) => baseline - (height100 / 100) * (baseline - padTop);
 
-  const svgPoints: [number, number][] = DOUBLES_FINISH_PERCENTILES.map(([s, p]) => [toSvgX(s), toSvgY(p)]);
+  const svgPoints: [number, number][] = DOUBLES_FINISH_DENSITY.map(([s, h]) => [toSvgX(s), toSvgY(h)]);
   const pathD = smoothPathD(svgPoints);
   const areaD = `${pathD} L ${width} ${baseline} L 0 ${baseline} Z`;
 
-  const clamped = Math.max(DOUBLES_MIN_SECONDS, Math.min(DOUBLES_MAX_SECONDS, targetSeconds));
+  const outOfRange = targetSeconds < DOUBLES_BASELINE_SECONDS;
+  const clamped = Math.max(DOUBLES_BASELINE_SECONDS, Math.min(DOUBLES_MAX_SECONDS, targetSeconds));
   const markerX = toSvgX(clamped);
+  const markerHeight100 = interpolatePoints(DOUBLES_FINISH_DENSITY, clamped);
+  const markerY = toSvgY(markerHeight100);
   const pct = doublesFinishPercentile(clamped);
-  const markerY = toSvgY(pct);
 
   return (
     <div className="rounded-lg p-3.5 mb-2.5" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
@@ -118,15 +122,16 @@ function DoublesFinishCurve({ targetSeconds }: { targetSeconds: number }) {
         <path d={areaD} fill="url(#doubles-finish-curve)" />
         <path d={pathD} fill="none" stroke={DOUBLES_CURVE_COLOR} strokeWidth={2} strokeOpacity={0.85} />
         <line x1={0} y1={baseline} x2={width} y2={baseline} stroke="var(--border-subtle)" strokeWidth={1} />
-        <line x1={markerX} y1={markerY} x2={markerX} y2={baseline} stroke={DOUBLES_CURVE_COLOR} strokeWidth={1.5} strokeDasharray="2,3" />
-        <circle cx={markerX} cy={markerY} r={6} fill={DOUBLES_CURVE_COLOR} stroke={tokens.surface.elevated} strokeWidth={1.5} />
+        {!outOfRange && <circle cx={markerX} cy={markerY} r={4} fill={DOUBLES_CURVE_COLOR} stroke={tokens.surface.elevated} strokeWidth={1.5} />}
       </svg>
       <div className="flex justify-between text-[10px] text-secondary mt-0.5">
-        <span>{formatMMSS(DOUBLES_MIN_SECONDS)}</span>
-        <span>{formatMMSS(DOUBLES_MAX_SECONDS)}</span>
+        <span>{formatMMSS(DOUBLES_BASELINE_SECONDS)} (Top 5%)</span>
+        <span>{formatMMSS(DOUBLES_MAX_SECONDS)} (Top 95%)</span>
       </div>
       <div className="text-xs font-bold mt-1.5" style={{ color: DOUBLES_CURVE_COLOR }}>
-        Top {pct < 1 ? '<1' : pct.toFixed(0)}% — real Doubles results (425,000+, all divisions)
+        {outOfRange
+          ? 'Faster than the real data covers — genuinely elite territory'
+          : `Top ${pct < 1 ? '<1' : pct.toFixed(0)}% — real Doubles results (425,000+, all divisions)`}
       </div>
     </div>
   );

@@ -272,10 +272,14 @@ export const DOUBLES_FINISH_PERCENTILES: [number, number][] = [
 ];
 // Top 5% anchor — factor 1.0, matches the plan's own hardest hand-authored content.
 export const DOUBLES_BASELINE_SECONDS = 3761;
-export const DOUBLES_MIN_SECONDS = 3761;
+// The slider goes faster than the real data's own fastest bracket (Top
+// 5%) so genuinely elite teams have somewhere to go — DoublesFinishCurve
+// shows honest "off the chart" text rather than a fake percentile for
+// anything faster than DOUBLES_BASELINE_SECONDS.
+export const DOUBLES_MIN_SECONDS = 3300;
 export const DOUBLES_MAX_SECONDS = 6684; // Top 95% anchor — real data's own slow end, not an arbitrary cutoff
 
-function interpolatePoints(points: [number, number][], x: number): number {
+export function interpolatePoints(points: [number, number][], x: number): number {
   if (x <= points[0][0]) return points[0][1];
   if (x >= points[points.length - 1][0]) return points[points.length - 1][1];
   for (let i = 0; i < points.length - 1; i++) {
@@ -289,6 +293,32 @@ function interpolatePoints(points: [number, number][], x: number): number {
 export function doublesFinishPercentile(seconds: number): number {
   return interpolatePoints(DOUBLES_FINISH_PERCENTILES, seconds);
 }
+
+// A real hump-shaped density curve — most finishers cluster around a
+// common time, tapering off at both ends — derived from the same 7
+// percentile brackets above via finite differences (rate of percentile
+// change per second between consecutive brackets), not a separately
+// sourced density dataset (hyresult's simulator only exposes per-
+// station/per-segment density curves, not one for total team time).
+// This is the real distribution's actual shape: it naturally peaks and
+// tapers because the brackets are unevenly spaced, not an invented
+// Gaussian. Height is normalized 0-100 for direct chart rendering.
+export const DOUBLES_FINISH_DENSITY: [number, number][] = (() => {
+  const pts = DOUBLES_FINISH_PERCENTILES;
+  const rates: [number, number][] = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const rate = (pts[i + 1][1] - pts[i][1]) / (pts[i + 1][0] - pts[i][0]);
+    const midpoint = (pts[i][0] + pts[i + 1][0]) / 2;
+    rates.push([midpoint, rate]);
+  }
+  const withTails: [number, number][] = [
+    [pts[0][0], rates[0][1] * 0.4],
+    ...rates,
+    [pts[pts.length - 1][0], rates[rates.length - 1][1] * 0.4],
+  ];
+  const maxRate = Math.max(...withTails.map(([, r]) => r));
+  return withTails.map(([t, r]) => [t, (r / maxRate) * 100]);
+})();
 
 export function formatMMSS(totalSeconds: number): string {
   const s = Math.round(totalSeconds % 60);
