@@ -570,6 +570,18 @@ export default function Hyrox() {
           </div>
 
           <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
+            <div className="text-sm font-black text-primary mb-1">YOUR START DATE</div>
+            <div className="text-xs text-secondary mb-3">Set automatically to the day you first opened this. Change it if that's wrong — Week 1 and the whole calendar shift to match.</div>
+            <input
+              type="date"
+              value={planStartDate}
+              onChange={(e) => e.target.value && saveProgress({ planStartDate: e.target.value })}
+              className="px-2 py-1.5 rounded text-sm"
+              style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: tokens.text.primary }}
+            />
+          </div>
+
+          <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
             <div className="text-sm font-black text-primary mb-1">YOUR WEEK AT A GLANCE</div>
             <div className="text-xs text-secondary mb-3">How Mon–Sun looks with the settings below — updates live as you change them.</div>
             <div className="grid grid-cols-7 gap-1.5">
