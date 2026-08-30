@@ -1,4 +1,5 @@
 import './stationShowcase.css';
+import type { StationFoul } from '../../data/hyroxPlan';
 import roxzoneImg from '../../assets/hyrox/roxzone.jpg';
 import skiergImg from '../../assets/hyrox/skierg.jpg';
 import sledPushImg from '../../assets/hyrox/sled-push.jpg';
@@ -23,6 +24,15 @@ const STATION_PHOTOS: Record<string, string> = {
   'Wall Balls 100 reps': wallBallsImg,
 };
 
+// Severity tag -> visual weight. DQ/NO REP/REPEAT OR DQ end your race or
+// the rep outright (critical); WARNING is a caution, not yet a penalty;
+// everything else is a fixed time add-on. Matches hyrox_penalties_rules.md.
+function severityTier(severity: string): 'critical' | 'warning' | 'time' {
+  if (severity.includes('DQ') || severity.includes('NO REP') || severity.includes('REPEAT')) return 'critical';
+  if (severity.includes('WARNING')) return 'warning';
+  return 'time';
+}
+
 /**
  * Full-bleed editorial replacement for the old compact StationFoulCard
  * grid — one large photo per station, alternating sides down the page,
@@ -30,8 +40,12 @@ const STATION_PHOTOS: Record<string, string> = {
  * `calc(50% - 50vw)` technique regardless of the parent's max-w-3xl
  * column, so photos actually reach the screen edge instead of being
  * boxed into the same 768px column as the rest of the tab.
+ *
+ * Severities (+15 SEC, WARNING, DQ, etc.) come straight from
+ * hyrox_penalties_rules.md — rendered as their own tag, not folded into
+ * the sentence, so the actual consequence reads at a glance.
  */
-export function StationShowcase({ stations }: { stations: [string, string[]][] }) {
+export function StationShowcase({ stations }: { stations: [string, StationFoul[]][] }) {
   const total = stations.length;
   return (
     <section className="station-showcase no-print">
@@ -53,7 +67,12 @@ export function StationShowcase({ stations }: { stations: [string, string[]][] }
               <h3 className="station-row__title">{station}</h3>
               <ul className="station-row__fouls">
                 {fouls.map((f, fi) => (
-                  <li key={fi}>{f}</li>
+                  <li key={fi}>
+                    <span className={`station-row__severity station-row__severity--${severityTier(f.severity)}`}>
+                      {f.severity}
+                    </span>
+                    <span className="station-row__foul-text">{f.text}</span>
+                  </li>
                 ))}
               </ul>
             </div>

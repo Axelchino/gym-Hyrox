@@ -495,43 +495,58 @@ export const STATIONS: string[] = ['SkiErg 1000m', 'Sled Push 152kg', 'Sled Pull
 // a live copy of the current official rulebook, so treat as a solid
 // starting reference and spot-check against the actual rulebook before
 // race day (penalty specifics do get revised season to season).
-export const STATION_FOULS: [string, string[]][] = [
+export type StationFoul = { severity: string; text: string };
+
+export const STATION_FOULS: [string, StationFoul[]][] = [
   ['RoxZone / Transitions', [
-    'Move through it — resting or standing still in the RoxZone can draw a warning.',
-    'Both partners must be present to start and finish each station together.',
+    { severity: '+1 MIN', text: 'Start late after wave.' },
+    { severity: '+1 MIN', text: 'Partners not running together.' },
+    { severity: '+3/+5/+7 MIN OR DQ', text: 'Missed run lap.' },
   ]],
   ['SkiErg 1000m', [
-    'Full 1000m must show on the monitor before releasing the handle.',
-    'Letting go of the handle mid-pull to "reset" doesn\'t skip meters — the display is what counts.',
+    { severity: '+15 SEC', text: 'Direct handle handoff.' },
+    { severity: '+15 SEC', text: 'Only working partner adjusts damper.' },
+    { severity: 'WARNING', text: 'Resting partner may not sit, kneel, or lie.' },
+    { severity: 'DQ', text: 'Dismount before 1000m complete.' },
   ]],
   ['Sled Push 50m', [
-    'Sled must be pushed the complete lane length, staying within the marked lane.',
-    'Hands must stay on the sled push bars — no pulling or dragging it by other means.',
+    { severity: '+15 SEC', text: 'Stepping on or outside lane lines.' },
+    { severity: '+15 SEC', text: 'Interfering with another lane.' },
+    { severity: 'DQ', text: 'Missing lane / incomplete station.' },
   ]],
   ['Sled Pull 50m', [
-    'Sled must travel the full distance within the lane using the rope.',
-    'Must remain behind the marked line while pulling — stepping over it can draw a warning.',
+    { severity: '+15 SEC', text: 'Stepping on lane lines or outside the racer box.' },
+    { severity: '+15 SEC', text: 'Interfering with another lane.' },
+    { severity: 'DQ', text: 'Missing lane / incomplete station.' },
   ]],
   ['Burpee Broad Jump 80m', [
-    'Two-foot takeoff AND two-foot landing on every jump — single-leg jumps get no-repped.',
-    'Chest (or thighs, depending on current standard) must touch the ground on the burpee portion — no half-reps.',
+    { severity: '+15 SEC', text: 'Feet not together on takeoff/landing.' },
+    { severity: '+15 SEC', text: 'Chest does not touch floor.' },
+    { severity: '+15 SEC', text: 'Extra shuffle / bad jump standard.' },
   ]],
   ['Row 1000m', [
-    'Full 1000m must show on the monitor before releasing the handle.',
-    'Same as SkiErg — letting go early to "finish" doesn\'t count if the meters aren\'t there.',
+    { severity: '+15 SEC', text: 'Direct handle handoff.' },
+    { severity: '+15 SEC', text: 'Only working partner adjusts damper / footstraps.' },
+    { severity: 'WARNING', text: 'Resting partner may not sit, kneel, or lie.' },
+    { severity: 'DQ', text: 'Dismount before 1000m complete.' },
   ]],
   ['Farmers Carry 200m', [
-    'Complete the full distance within the lane — repeatedly setting the weights down to rest can draw a warning.',
-    'Both implements must be carried, one in each hand, the whole way.',
+    { severity: 'WARNING', text: 'Kettlebells may only be passed sideways or backward.' },
+    { severity: '+30 SEC', text: 'Incorrect return of kettlebells.' },
+    { severity: 'DQ', text: 'Missing lap / incomplete station.' },
+    { severity: 'REPEAT OR DQ', text: 'Wrong weight.' },
   ]],
   ['Sandbag Lunges 100m', [
-    'Back knee must touch the floor on every single rep, or it\'s a no-rep.',
-    'Sandbag must stay on the shoulders/back throughout — dropping it doesn\'t pause the distance.',
+    { severity: '+15 SEC', text: 'Rear knee must touch floor, finish tall.' },
+    { severity: '+15 SEC', text: 'Sandbag must stay on both shoulders.' },
+    { severity: 'REPEAT OR DQ', text: 'Wrong weight / incorrect use of weight.' },
   ]],
   ['Wall Balls 100 reps', [
-    'Ball must hit the marked target height (10ft) — short throws are no-reps, straight penalties, no warning.',
-    'Hips must break parallel (below knees) on every squat — half-squats get no-repped.',
-    'Ball must be caught, not allowed to bounce uncontrolled off the wall.',
+    { severity: '+2 MIN', text: 'Chalk use.' },
+    { severity: 'DQ', text: 'Leaving before 100 reps complete.' },
+    { severity: 'NO REP', text: 'Resting partner not under rig.' },
+    { severity: 'NO REP', text: 'Bad ball handoff / transition.' },
+    { severity: 'NO REP', text: 'Target miss or squat not below 90°.' },
   ]],
 ];
 
