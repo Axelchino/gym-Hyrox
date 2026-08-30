@@ -180,10 +180,6 @@ export default function HyroxHybrid() {
 
   return (
     <div className="hyrox-print-area max-w-3xl mx-auto px-4 pb-16 pt-4">
-      {/* TEMP DEBUG — remove once onboarding no-show is diagnosed */}
-      <div className="no-print" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: '#000', color: '#0f0', fontSize: 11, fontFamily: 'monospace', padding: 8, zIndex: 9999, whiteSpace: 'pre-wrap' }}>
-        {JSON.stringify({ needsOnboarding, planStartDate, hasUser: !!user, userId: user?.id, progressIsUndefined: progress === undefined, progressPlanStartDate: progress?.planStartDate, isGuest })}
-      </div>
       {needsOnboarding && (
         <HyroxOnboarding
           raceDateDefault={DEFAULT_RACE_DATE}
