@@ -337,38 +337,106 @@ function reversePillarMap(map: PillarDayMap): Record<string, keyof PillarDayMap>
   return rev;
 }
 
+export function mondayOf(dateIso: string): Date {
+  const d = new Date(dateIso + 'T12:00:00');
+  const dow = d.getDay(); // 0=Sun..6=Sat
+  d.setDate(d.getDate() - ((dow + 6) % 7)); // back up to the most recent Monday
+  return d;
+}
+export function addDays(d: Date, n: number): Date {
+  const copy = new Date(d);
+  copy.setDate(copy.getDate() + n);
+  return copy;
+}
+
+export interface DoublesSchedule {
+  weekOffset: number;   // how many of the original 18 training weeks get skipped
+  weeksAvailable: number; // total personal weeks, last one is always race week
+  extraWeeks: number;   // only nonzero if there's MORE runway than the original 19 weeks
+}
+
+// Everyone's calendar used to be anchored to one fixed historical date
+// (START), so opening the app any time after that landed you mid-plan —
+// "Week 5" on day one, with a pile of earlier days shown as an unchecked
+// backlog you never had a chance to do. Now each person's calendar is
+// anchored to when THEY actually started (planStartDate), and if less
+// than the original 19-week runway remains before their race date, the
+// plan compresses by skipping ahead into the existing 18 weeks of
+// content — e.g. starting around where week 6 used to be — so the later
+// Build/Specific/Peak phases and the taper still land correctly on race
+// day, without inventing new content. What the person sees is always
+// relabeled starting at "Week 1", regardless of which original week's
+// content it's pulling from.
+export function computeDoublesSchedule(planStartDate: string, raceDate: string): DoublesSchedule {
+  const planStartMonday = mondayOf(planStartDate);
+  const raceMonday = mondayOf(raceDate);
+  const weeksBetween = Math.round((raceMonday.getTime() - planStartMonday.getTime()) / (7 * 86400000));
+  const weeksAvailable = Math.max(1, weeksBetween + 1);
+  const extraWeeks = Math.max(0, weeksAvailable - 19); // more runway than the plan was designed for
+  const weekOffset = Math.max(0, 19 - weeksAvailable); // less runway — skip ahead into the content
+  return { weekOffset, weeksAvailable, extraWeeks };
+}
+
+// Which original week's content (1-18) a given personal week number pulls
+// from. Personal weeks before the real 19-week arc begins (only possible
+// when there's MORE runway than 19 weeks) hold on week 1's content as a
+// simple base-building filler rather than inventing new material.
+export function personalToOriginalWeek(personalWeek: number, schedule: Pick<DoublesSchedule, 'weekOffset' | 'extraWeeks'>): number {
+  if (personalWeek <= schedule.extraWeeks) return 1;
+  return Math.min(18, schedule.weekOffset + (personalWeek - schedule.extraWeeks));
+}
+
 export function buildPersonalDays(
   pillarDayMap: PillarDayMap = DEFAULT_PILLAR_DAY_MAP,
   recoveryChoices: RecoveryChoices = DEFAULT_RECOVERY_CHOICES,
   tier: HyroxTier = 'top5',
   raceDate: string = RACE_DAY,
+  planStartDate: string = '',
 ): HyroxDay[] {
   const weeks = WEEKS_BY_TIER[tier];
   const dayToPillar = reversePillarMap(pillarDayMap);
-  const days: HyroxDay[] = WEEK0.map((d) => ({ ...d, week: 0, dow: DOW[new Date(d.date + 'T12:00:00').getDay()] }));
   const week19Days = getWeek19Days(raceDate);
 
-  for (let w = 1; w <= 19; w++) {
-    WEEKDAYS.forEach((dw, i) => {
-      const dt = new Date(START);
-      dt.setDate(START.getDate() + (w - 1) * 7 + i);
-      const iso = fmtDate(dt);
-      if (w === 19 && iso > '2026-12-06') return;
+  const pickSlot = (originalWeek: number, dw: string, isRaceWeek: boolean): DaySlot => {
+    if (isRaceWeek) return week19Days[dw];
+    const pillarRole = dayToPillar[dw];
+    return pillarRole ? weeks[originalWeek].pillars[pillarRole] : RECOVERY_TRACKS[recoveryChoices[dw] ?? 'rest'][originalWeek];
+  };
 
-      let slot: DaySlot;
-      if (w === 19) {
-        slot = week19Days[dw];
-      } else {
-        const pillarRole = dayToPillar[dw];
-        if (pillarRole) {
-          slot = weeks[w].pillars[pillarRole];
-        } else {
-          const option = recoveryChoices[dw] ?? 'rest';
-          slot = RECOVERY_TRACKS[option][w];
-        }
-      }
-      const [type, title, detail] = slot;
-      days.push({ date: iso, week: w, dow: dw, type, title, detail });
+  if (!planStartDate) {
+    // Reference/legacy layout: fixed historical START, full uncompressed
+    // 19-week arc. Used by ALL_DAYS and anywhere without a specific
+    // person's actual start date.
+    const days: HyroxDay[] = WEEK0.map((d) => ({ ...d, week: 0, dow: DOW[new Date(d.date + 'T12:00:00').getDay()] }));
+    for (let w = 1; w <= 19; w++) {
+      WEEKDAYS.forEach((dw, i) => {
+        const dt = addDays(START, (w - 1) * 7 + i);
+        const iso = fmtDate(dt);
+        if (w === 19 && iso > '2026-12-06') return;
+        const [type, title, detail] = pickSlot(w, dw, w === 19);
+        days.push({ date: iso, week: w, dow: dw, type, title, detail });
+      });
+    }
+    return days;
+  }
+
+  // Personal calendar: anchored to when this person actually started,
+  // compressed or extended to fit however many weeks actually remain.
+  const schedule = computeDoublesSchedule(planStartDate, raceDate);
+  const planStartMonday = mondayOf(planStartDate);
+  const raceWeekSundayIso = fmtDate(addDays(mondayOf(raceDate), 6));
+  const days: HyroxDay[] = [];
+
+  for (let pw = 1; pw <= schedule.weeksAvailable; pw++) {
+    const isRaceWeek = pw === schedule.weeksAvailable;
+    const originalWeek = isRaceWeek ? 19 : personalToOriginalWeek(pw, schedule);
+    WEEKDAYS.forEach((dw, i) => {
+      const dt = addDays(planStartMonday, (pw - 1) * 7 + i);
+      const iso = fmtDate(dt);
+      if (iso < planStartDate) return; // never show days before they actually started — no invented backlog
+      if (isRaceWeek && iso > raceWeekSundayIso) return;
+      const [type, title, detail] = pickSlot(originalWeek, dw, isRaceWeek);
+      days.push({ date: iso, week: pw, dow: dw, type, title, detail });
     });
   }
   return days;

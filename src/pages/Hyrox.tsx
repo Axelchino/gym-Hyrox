@@ -14,6 +14,7 @@ import { StationFoulCard } from '../components/hyrox/StationDiagram';
 import {
   buildPersonalDays, WEEKS_BY_TIER, TARGETS_BY_TIER, TIER_LABEL, TIER_RECOVERY_FLOOR, WEEKDAYS,
   phaseOf, RULES, SHOP, STATIONS, STATION_FOULS, RACE_DAY, fmtDate, pretty, makeICS, START, WEEK19,
+  computeDoublesSchedule, personalToOriginalWeek,
 } from '../data/hyroxPlan';
 import type {
   HyroxTier, HyroxWeek, PillarRole, RecoveryOption,
@@ -171,10 +172,22 @@ export default function Hyrox() {
   const recoveryChoices = user ? (progress?.recoveryChoices ?? DEFAULT_RECOVERY_CHOICES) : guestProgress.recoveryChoices;
   const tier: HyroxTier = user ? (progress?.tier ?? 'top5') : guestProgress.tier;
   const raceDate = user ? (progress?.raceDate ?? RACE_DAY) : guestProgress.raceDate;
+  const planStartDate = user ? (progress?.planStartDate ?? '') : guestProgress.planStartDate;
 
-  const saveProgress = (patch: Partial<Pick<typeof guestProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'pillarDayMap' | 'recoveryChoices' | 'tier' | 'raceDate'>>) => {
+  const saveProgress = (patch: Partial<Pick<typeof guestProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'pillarDayMap' | 'recoveryChoices' | 'tier' | 'raceDate' | 'planStartDate'>>) => {
     if (user) { void saveProgressRemote(patch); } else { saveGuestProgress(patch); }
   };
+
+  // Captured once, the first time this loads with no start date set, then
+  // left fixed — so opening the app always looks like Day 1 instead of
+  // landing mid-plan with an invented backlog of days you never had a
+  // chance to do.
+  useEffect(() => {
+    if (!planStartDate && (user ? progress !== undefined : true)) {
+      saveProgress({ planStartDate: fmtDate(new Date()) });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planStartDate, user, progress]);
 
   const weeks = WEEKS_BY_TIER[tier];
   const TARGET_CURVE_COLORS = ['#B7791F', '#C05621', '#2B6CB0', '#0891B2', '#E03131'];
@@ -192,9 +205,21 @@ export default function Hyrox() {
     [pillarDayMap],
   );
   const days = useMemo(
-    () => buildPersonalDays(pillarDayMap, recoveryChoices, tier, raceDate),
-    [pillarDayMap, recoveryChoices, tier, raceDate],
+    () => buildPersonalDays(pillarDayMap, recoveryChoices, tier, raceDate, planStartDate),
+    [pillarDayMap, recoveryChoices, tier, raceDate, planStartDate],
   );
+  // Only meaningful once planStartDate is captured; falls back to no
+  // compression (weekOffset 0) for the brief window before that happens.
+  const doublesSchedule = useMemo(
+    () => (planStartDate ? computeDoublesSchedule(planStartDate, raceDate) : { weekOffset: 0, weeksAvailable: 19, extraWeeks: 0 }),
+    [planStartDate, raceDate],
+  );
+  // The displayed "Week N" is always the person's own count starting at 1;
+  // this maps it back to which of the 18 authored weeks' content (km,
+  // deload, bench, phase) actually applies.
+  const originalWeekOf = (personalWeek: number) =>
+    personalWeek === doublesSchedule.weeksAvailable ? 19 : personalToOriginalWeek(personalWeek, doublesSchedule);
+  const planWeekNumbers = useMemo(() => Array.from(new Set(days.map((d) => d.week))).sort((a, b) => a - b), [days]);
 
   const partner = groupInfo?.members.find((m) => m.userId !== user?.id);
   const { data: partnerProgress } = useHyroxProgress(partner?.userId, { isPartner: true });
@@ -402,7 +427,7 @@ export default function Hyrox() {
         <div className="no-print">
           <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
             <div className="flex justify-between items-baseline">
-              <span className="text-xs text-secondary font-mono">{pretty(today.date)} · WEEK {today.week} · {today.week ? phaseOf(today.week).name : 'PREP'}</span>
+              <span className="text-xs text-secondary font-mono">{pretty(today.date)} · WEEK {today.week} · {today.week ? phaseOf(originalWeekOf(today.week)).name : 'PREP'}</span>
               <span className="badge-chip text-[10px] font-bold px-1.5 py-0.5 rounded text-white" style={{ background: TYPE_COLOR[today.type] }}>{TYPE_LABEL[today.type]}</span>
             </div>
             <div className="text-2xl font-black text-primary my-2">{today.title}</div>
@@ -425,8 +450,8 @@ export default function Hyrox() {
               <ProgressRing value={totalSessions ? doneCount / totalSessions : 0} size={52} strokeWidth={5} color="#FFD500" center={String(doneCount)} sublabel={`OF ${totalSessions} DONE`} />
             </div>
             {[
-              ['This week', curWeek && curWeek <= 18 ? `${weeks[curWeek]?.km ?? '–'} km` : curWeek === 19 ? `${WEEK19.km} km` : 'prep'],
-              ['Phase', curWeek ? phaseOf(curWeek).name.split('· ')[1] : 'Prep'],
+              ['This week', curWeek ? (originalWeekOf(curWeek) === 19 ? `${WEEK19.km} km` : `${weeks[originalWeekOf(curWeek)]?.km ?? '–'} km`) : 'prep'],
+              ['Phase', curWeek ? phaseOf(originalWeekOf(curWeek)).name.split('· ')[1] : 'Prep'],
             ].map(([l, v]) => (
               <div key={l} className="flex-1 rounded-lg p-2.5" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
                 <div className="text-lg font-black text-primary">{v}</div>
@@ -486,23 +511,27 @@ export default function Hyrox() {
             </div>
           )}
 
-          {[...Array(20).keys()].map((w) => {
+          {planWeekNumbers.map((w) => {
             if (w === 0) {
+              // Only ever present in the brief legacy-fallback window
+              // before planStartDate is captured.
               const open = printMode || openWeek === 0;
               return (
                 <div key={w} className="mb-2 week-block">
                   <button className="no-print w-full text-left px-3 py-2.5 rounded-md flex justify-between" style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.elevated }} onClick={() => setOpenWeek(open ? null : 0)}>
-                    <span className="font-bold text-primary">Week 0 — Prep (Jul 23–26)</span><span className="text-primary">{open ? '−' : '+'}</span>
+                    <span className="font-bold text-primary">Week 0 — Prep</span><span className="text-primary">{open ? '−' : '+'}</span>
                   </button>
                   {printMode && <div className="font-black text-sm text-primary my-2">WEEK 0 — PREP</div>}
                   {open && <div className="px-1">{days.filter((d) => d.week === 0).map((d) => <DayRow key={d.date} d={d} done={!!done[d.date]} onToggle={toggleDone} printMode={printMode} />)}</div>}
                 </div>
               );
             }
-            const wk: Pick<HyroxWeek, 'km' | 'deload' | 'race' | 'bench'> = w === 19 ? { km: WEEK19.km, race: WEEK19.race } : weeks[w];
-            const ph = phaseOf(w);
+            const originalWeek = originalWeekOf(w);
+            const wk: Pick<HyroxWeek, 'km' | 'deload' | 'race' | 'bench'> = originalWeek === 19 ? { km: WEEK19.km, race: WEEK19.race } : weeks[originalWeek];
+            const ph = phaseOf(originalWeek);
             const open = printMode || openWeek === w;
-            const start = new Date(START); start.setDate(START.getDate() + (w - 1) * 7);
+            const firstDayIso = days.find((d) => d.week === w)?.date;
+            const start = new Date((firstDayIso ?? fmtDate(START)) + 'T12:00:00');
             return (
               <div key={w} className="mb-2 week-block">
                 <button

@@ -86,6 +86,15 @@ export interface HyroxProgress {
   // used to scale its running/station targets. Meaningless for 'doubles'
   // (which uses `tier` instead) but kept on the same shared row.
   targetTotalSeconds: number;
+  // ISO date (YYYY-MM-DD), or '' if not yet captured. The day someone
+  // actually started using the plan — captured once, automatically, the
+  // first time their progress loads with this field empty, then left
+  // fixed forever after (recomputing it from "today" on every visit
+  // would make the calendar drift and desync from their `done` map).
+  // Both plans build their calendar from this instead of a shared fixed
+  // date, so opening the app for the first time always looks like Day 1,
+  // never like you're already behind on weeks you never had a chance to do.
+  planStartDate: string;
   updatedAt: string;
 }
 
@@ -120,6 +129,7 @@ export const HYROX_PROGRESS_EMPTY: Omit<HyroxProgress, 'userId' | 'updatedAt'> =
   raceDate: DEFAULT_RACE_DATE,
   planId: 'doubles',
   targetTotalSeconds: 3540, // 59:00 — the hybrid plan's sub-60 baseline
+  planStartDate: '',
 };
 
 export interface HyroxAdminGroupSummary {

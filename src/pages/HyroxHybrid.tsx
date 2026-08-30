@@ -57,14 +57,26 @@ export default function HyroxHybrid() {
   const stations = user ? (progress?.stations ?? {}) : guestProgress.stations;
   const raceDate = user ? (progress?.raceDate ?? DEFAULT_RACE_DATE) : guestProgress.raceDate;
   const targetTotalSeconds = user ? (progress?.targetTotalSeconds ?? HYBRID_BASELINE_SECONDS) : guestProgress.targetTotalSeconds;
+  const planStartDate = user ? (progress?.planStartDate ?? '') : guestProgress.planStartDate;
 
-  const saveProgress = (patch: Partial<Pick<typeof guestProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'raceDate' | 'targetTotalSeconds'>>) => {
+  const saveProgress = (patch: Partial<Pick<typeof guestProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'raceDate' | 'targetTotalSeconds' | 'planStartDate'>>) => {
     if (user) { void saveProgressRemote(patch); } else { saveGuestProgress(patch); }
   };
 
+  // Captured once, the first time this loads with no start date set, then
+  // left fixed — so opening the app always looks like Day 1 instead of
+  // landing mid-plan with an invented backlog of days never had a chance
+  // to do.
+  useEffect(() => {
+    if (!planStartDate && (user ? progress !== undefined : true)) {
+      saveProgress({ planStartDate: fmtDate(new Date()) });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planStartDate, user, progress]);
+
   const days = useMemo(
-    () => buildHybridPersonalDays(raceDate, targetTotalSeconds),
-    [raceDate, targetTotalSeconds],
+    () => buildHybridPersonalDays(raceDate, targetTotalSeconds, planStartDate),
+    [raceDate, targetTotalSeconds, planStartDate],
   );
   const targets = useMemo(() => hybridTargetsForTime(targetTotalSeconds), [targetTotalSeconds]);
 

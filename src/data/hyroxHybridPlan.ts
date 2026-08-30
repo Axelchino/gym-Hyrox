@@ -1,5 +1,5 @@
 import type { DaySlot, HyroxDay, HyroxDayType } from '../types/hyrox';
-import { scalePaces, WEEKDAYS, START, fmtDate, DOW } from './hyroxPlan';
+import { scalePaces, WEEKDAYS, START, fmtDate, DOW, mondayOf } from './hyroxPlan';
 
 /* =====================================================================
  * HYBRID PLAN — HYROX conditioning interleaved with real bodybuilding
@@ -153,12 +153,18 @@ function buildHybridWeek(weeksOut: number, targetTotalSeconds: number): Record<s
 }
 
 /* ================= PERSONALIZED SCHEDULE ================= */
-export function buildHybridPersonalDays(raceDate: string, targetTotalSeconds: number = HYBRID_BASELINE_SECONDS): HyroxDay[] {
+// Unlike the Doubles plan, this never needed a fixed pre-authored week
+// table — every week's content is already computed live from "weeks out
+// from race," so anchoring to whenever the person actually started
+// (planStartDate) instead of a shared historical date needs no
+// compression logic at all: it just naturally generates however many
+// weeks actually exist between start and race day.
+export function buildHybridPersonalDays(raceDate: string, targetTotalSeconds: number = HYBRID_BASELINE_SECONDS, planStartDate: string = ''): HyroxDay[] {
   const raceMs = new Date(raceDate + 'T12:00:00').getTime();
   const endMs = raceMs + 3 * 86400000; // a few recovery days past race day
   const days: HyroxDay[] = [];
 
-  const cursor = new Date(START);
+  const cursor = planStartDate ? mondayOf(planStartDate) : new Date(START);
   let week = 1;
   while (cursor.getTime() <= endMs) {
     const weekStartMs = cursor.getTime();
@@ -170,6 +176,7 @@ export function buildHybridPersonalDays(raceDate: string, targetTotalSeconds: nu
       dt.setDate(cursor.getDate() + i);
       if (dt.getTime() > endMs) break;
       const iso = fmtDate(dt);
+      if (planStartDate && iso < planStartDate) continue; // never show days before they actually started
       const dw = WEEKDAYS[i];
       const offsetFromRace = Math.round((dt.getTime() - raceMs) / 86400000);
 
