@@ -60,7 +60,11 @@ export default function HyroxHybrid() {
   const planStartDate = user ? (progress?.planStartDate ?? '') : guestProgress.planStartDate;
 
   const saveProgress = (patch: Partial<Pick<typeof guestProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'raceDate' | 'targetTotalSeconds' | 'planStartDate'>>) => {
-    if (user) { void saveProgressRemote(patch); } else { saveGuestProgress(patch); }
+    if (user) {
+      saveProgressRemote(patch).catch((err) => console.error('Failed to save Hyrox progress:', err));
+    } else {
+      saveGuestProgress(patch);
+    }
   };
 
   // Captured once, the first time this loads with no start date set, then
