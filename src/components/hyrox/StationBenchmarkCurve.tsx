@@ -8,6 +8,26 @@ export function parseMMSS(text: string): number | null {
   return parts.reduce((acc, p) => acc * 60 + p, 0);
 }
 
+/** Catmull-Rom -> cubic Bezier through the real points, so the curve reads
+ * as a smooth line instead of a visible polyline between samples — the
+ * points themselves aren't changed, only how the gaps between them render. */
+function smoothPathD(points: [number, number][]): string {
+  if (points.length < 2) return '';
+  const d: string[] = [`M ${points[0][0].toFixed(1)} ${points[0][1].toFixed(1)}`];
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] ?? points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] ?? p2;
+    const cp1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const cp1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const cp2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const cp2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d.push(`C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)} ${cp2x.toFixed(1)} ${cp2y.toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`);
+  }
+  return d.join(' ');
+}
+
 function interpolate(points: [number, number][], x: number): number {
   if (x <= points[0][0]) return points[0][1];
   if (x >= points[points.length - 1][0]) return points[points.length - 1][1];
@@ -38,9 +58,8 @@ export function StationBenchmarkCurve({ station, seconds }: { station: string; s
   const toSvgX = (xPct: number) => (xPct / 100) * width;
   const toSvgY = (h: number) => baseline - (h / 100) * (baseline - padTop);
 
-  const pathD = benchmark.curve
-    .map(([x, h], i) => `${i === 0 ? 'M' : 'L'} ${toSvgX(x).toFixed(1)} ${toSvgY(h).toFixed(1)}`)
-    .join(' ');
+  const svgPoints: [number, number][] = benchmark.curve.map(([x, h]) => [toSvgX(x), toSvgY(h)]);
+  const pathD = smoothPathD(svgPoints);
   const areaD = `${pathD} L ${width} ${baseline} L 0 ${baseline} Z`;
 
   const clamped = seconds === null ? null : Math.max(benchmark.min, Math.min(benchmark.max, seconds));

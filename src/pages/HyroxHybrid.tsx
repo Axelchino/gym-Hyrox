@@ -11,6 +11,7 @@ import { TimeWheelPicker } from '../components/hyrox/TimeWheelPicker';
 import { DayRow, TYPE_COLOR, TYPE_LABEL } from '../components/hyrox/DayRow';
 import { ProgressRing } from '../components/hyrox/ProgressRing';
 import { StationShowcase } from '../components/hyrox/StationShowcase';
+import { StationBenchmarkCurve, parseMMSS } from '../components/hyrox/StationBenchmarkCurve';
 import { STATIONS, WEEKDAYS, fmtDate, pretty, makeICS, STATION_FOULS } from '../data/hyroxPlan';
 import {
   buildHybridPersonalDays, hybridTargetsForTime, hybridWeeklyRunningKm,
@@ -450,18 +451,24 @@ export default function HyroxHybrid() {
 
           <div className="text-base font-black text-primary mb-2">STATION BESTS</div>
           <div className="rounded-lg p-3" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
-            {STATIONS.map((s) => (
-              <div key={s} className="flex justify-between items-center py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                <span className="text-sm font-semibold text-primary">{s}</span>
-                <input
-                  type="text" placeholder="—:—"
-                  value={stationDraft[s] ?? stations[s] ?? ''}
-                  onChange={(e) => setStationDraft({ ...stationDraft, [s]: e.target.value })}
-                  onBlur={(e) => saveProgress({ stations: { ...stations, [s]: e.target.value } })}
-                  className="w-20 text-right px-1.5 py-1 rounded text-sm font-mono" style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)' }}
-                />
-              </div>
-            ))}
+            {STATIONS.map((s) => {
+              const liveValue = stationDraft[s] ?? stations[s] ?? '';
+              return (
+                <div key={s} className="py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-semibold text-primary">{s}</span>
+                    <input
+                      type="text" placeholder="—:—"
+                      value={liveValue}
+                      onChange={(e) => setStationDraft({ ...stationDraft, [s]: e.target.value })}
+                      onBlur={(e) => saveProgress({ stations: { ...stations, [s]: e.target.value } })}
+                      className="w-20 text-right px-1.5 py-1 rounded text-sm font-mono" style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)' }}
+                    />
+                  </div>
+                  <StationBenchmarkCurve station={s} seconds={parseMMSS(liveValue)} />
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

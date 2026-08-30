@@ -776,7 +776,6 @@ export default function Hyrox() {
           <div className="rounded-lg p-3" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
             {STATIONS.map((s) => {
               const liveValue = stationDraft[s] ?? stations[s] ?? '';
-              const isCheckpoint = s === 'Wall Balls 100'; // real-data curve checkpoint — rest of the stations get this once confirmed
               return (
                 <div key={s} className="py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <div className="flex justify-between items-center">
@@ -789,7 +788,7 @@ export default function Hyrox() {
                       className="w-20 text-right px-1.5 py-1 rounded text-sm font-mono" style={{ border: '1px solid var(--border-subtle)', background: tokens.surface.primary, color: 'var(--text-primary)' }}
                     />
                   </div>
-                  {isCheckpoint && <StationBenchmarkCurve station={s} seconds={parseMMSS(liveValue)} />}
+                  <StationBenchmarkCurve station={s} seconds={parseMMSS(liveValue)} />
                 </div>
               );
             })}
