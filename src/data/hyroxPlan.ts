@@ -1,5 +1,5 @@
 import type {
-  DaySlot, HyroxDay, HyroxPhase, HyroxTier, HyroxWeek, PillarDayMap, RecoveryChoices, RecoveryOption,
+  DaySlot, HyroxDay, HyroxPhase, HyroxWeek, PillarDayMap, RecoveryChoices, RecoveryOption,
 } from '../types/hyrox';
 import { DEFAULT_PILLAR_DAY_MAP, DEFAULT_RECOVERY_CHOICES } from '../types/hyrox';
 
@@ -253,14 +253,68 @@ export const WEEK19: { km: number; race: true; days: Record<string, DaySlot> } =
   km: 15, race: true, days: getWeek19Days(RACE_DAY),
 };
 
-/* ================= TIER SCALING ================= */
-// Estimates extrapolated from the doubles benchmark table (sub-1:07 =
-// top 10%, 1:02-1:05 = top 5%) — not lab-validated, easy to retune by
-// changing these two numbers.
-const TIER_FACTOR: Record<HyroxTier, number> = { top5: 1, top10: 1.07, top20: 1.13 };
-export const TIER_LABEL: Record<HyroxTier, string> = { top5: 'Top 5%', top10: 'Top 10%', top20: 'Top 20%' };
-// How many of the 3 recovery-zone days must stay 'rest' or 'easyWalk' at each tier.
-export const TIER_RECOVERY_FLOOR: Record<HyroxTier, number> = { top5: 1, top10: 2, top20: 3 };
+/* ================= CONTINUOUS AMBITION SCALING ================= */
+// Real Doubles finish-time distribution — all divisions combined,
+// 425,000+ real results (Seasons 7-8), sourced from HyroxDataLab
+// (hyroxdatalab.com/articles/what-is-a-good-hyrox-doubles-time).
+// Replaces the old 3-button Top5/10/20% tier system, which mapped to
+// hand-picked pace-scaling factors (1, 1.07, 1.13) with no real
+// distribution behind them — this is an actual measured distribution,
+// and the slider now picks any point along it, not just 3 of them.
+export const DOUBLES_FINISH_PERCENTILES: [number, number][] = [
+  [3761, 5],   // Top 5%: 1:02:41
+  [3973, 10],  // Top 10%: 1:06:13
+  [4371, 25],  // Top 25%: 1:12:51
+  [4879, 50],  // Median: 1:21:19
+  [5481, 75],  // Top 75%: 1:31:21
+  [6180, 90],  // Top 90%: 1:43:00
+  [6684, 95],  // Top 95%: 1:51:24
+];
+// Top 5% anchor — factor 1.0, matches the plan's own hardest hand-authored content.
+export const DOUBLES_BASELINE_SECONDS = 3761;
+export const DOUBLES_MIN_SECONDS = 3761;
+export const DOUBLES_MAX_SECONDS = 6684; // Top 95% anchor — real data's own slow end, not an arbitrary cutoff
+
+function interpolatePoints(points: [number, number][], x: number): number {
+  if (x <= points[0][0]) return points[0][1];
+  if (x >= points[points.length - 1][0]) return points[points.length - 1][1];
+  for (let i = 0; i < points.length - 1; i++) {
+    const [x0, y0] = points[i];
+    const [x1, y1] = points[i + 1];
+    if (x >= x0 && x <= x1) return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+  }
+  return points[points.length - 1][1];
+}
+/** Real percentile at this target finish time — interpolated between the actual sampled brackets, not a formula. */
+export function doublesFinishPercentile(seconds: number): number {
+  return interpolatePoints(DOUBLES_FINISH_PERCENTILES, seconds);
+}
+
+export function formatMMSS(totalSeconds: number): string {
+  const s = Math.round(totalSeconds % 60);
+  if (totalSeconds >= 3600) {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  const m = Math.floor(totalSeconds / 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// Mandatory minimum recovery days, interpolated across the real range
+// and rounded — keeps the plan's original 3 reference points (1/2/3
+// days at the old top5/top10/top20 factors) then tapers to a capped
+// 4-day floor at the real slow end, instead of extrapolating the old
+// tight-range slope into something absurd at the wider new range.
+const RECOVERY_FLOOR_POINTS: [number, number][] = [
+  [DOUBLES_BASELINE_SECONDS, 1],
+  [DOUBLES_BASELINE_SECONDS * 1.07, 2],
+  [DOUBLES_BASELINE_SECONDS * 1.13, 3],
+  [DOUBLES_MAX_SECONDS, 4],
+];
+export function recoveryFloorForTarget(seconds: number): number {
+  return Math.round(interpolatePoints(RECOVERY_FLOOR_POINTS, seconds));
+}
 
 function scalePaceToken(mm: string, ss: string, factor: number): string {
   const totalSec = Math.round((parseInt(mm, 10) * 60 + parseInt(ss, 10)) * factor);
@@ -284,35 +338,42 @@ function scaleSlot([type, title, detail]: DaySlot, factor: number): DaySlot {
   return [type, scalePaces(title, factor), scalePaces(detail, factor)];
 }
 
-// Hand-curated overrides for the numbers the pace-regex can't reach —
-// total-time targets written as prose ("Target ~26:00"), not "/km" tokens.
-const FIVE_K_OVERRIDES: Record<HyroxTier, Record<number, { bench: string; title: string; detail: string }>> = {
-  top5: {
-    5: { bench: '5K TT #2 (~26:00) + Ski/Row 1000m TT', title: '★ 5K TIME TRIAL #2', detail: 'Target ~26:00. Warm up 10 min + strides. Record it.' },
-    10: { bench: '5K TT #3 (~24:00) + erg TTs', title: '★ 5K TIME TRIAL #3', detail: 'Target ~24:00. Record.' },
-    14: { bench: '5K TT #4 (~22:30) · peak mileage', title: '★ 5K TIME TRIAL #4', detail: 'Target ~22:30 (or 3km @4:30/km if legs are heavy). Record.' },
-  },
-  top10: {
-    5: { bench: '5K TT #2 (~28:00) + Ski/Row 1000m TT', title: '★ 5K TIME TRIAL #2', detail: 'Target ~28:00. Warm up 10 min + strides. Record it.' },
-    10: { bench: '5K TT #3 (~25:40) + erg TTs', title: '★ 5K TIME TRIAL #3', detail: 'Target ~25:40. Record.' },
-    14: { bench: '5K TT #4 (~24:00) · peak mileage', title: '★ 5K TIME TRIAL #4', detail: 'Target ~24:00 (or 3km @4:50/km if legs are heavy). Record.' },
-  },
-  top20: {
-    5: { bench: '5K TT #2 (~29:20) + Ski/Row 1000m TT', title: '★ 5K TIME TRIAL #2', detail: 'Target ~29:20. Warm up 10 min + strides. Record it.' },
-    10: { bench: '5K TT #3 (~27:10) + erg TTs', title: '★ 5K TIME TRIAL #3', detail: 'Target ~27:10. Record.' },
-    14: { bench: '5K TT #4 (~25:30) · peak mileage', title: '★ 5K TIME TRIAL #4', detail: 'Target ~25:30 (or 3km @5:05/km if legs are heavy). Record.' },
-  },
+// Hand-authored 5K time-trial targets at the plan's fastest (baseline,
+// factor 1.0) point, scaled continuously by the same factor as
+// everything else. Replaces 3 separately hand-typed tier variants that,
+// checked against each other, already tracked the same proportional
+// scaling the pace-regex uses — this generalizes that to any factor
+// instead of only the 3 originally hand-picked ones. These are total-time
+// prose targets ("Target ~26:00"), not "/km" tokens, so they can't go
+// through scalePaces/PACE_REGEX directly.
+const FIVE_K_WEEK_BASELINES: Record<number, { title: string; targetSeconds: number; altPaceSeconds?: number }> = {
+  5: { title: '★ 5K TIME TRIAL #2', targetSeconds: 1560 },   // ~26:00
+  10: { title: '★ 5K TIME TRIAL #3', targetSeconds: 1440 },  // ~24:00
+  14: { title: '★ 5K TIME TRIAL #4 · peak mileage', targetSeconds: 1350, altPaceSeconds: 270 }, // ~22:30, alt 4:30/km
 };
 
-function scaleWeek(week: HyroxWeek, weekNum: number, tier: HyroxTier): HyroxWeek {
-  const factor = TIER_FACTOR[tier];
+function fiveKOverrideForWeek(weekNum: number, factor: number): { bench: string; title: string; detail: string } | null {
+  const base = FIVE_K_WEEK_BASELINES[weekNum];
+  if (!base) return null;
+  const target = formatMMSS(Math.round(base.targetSeconds * factor));
+  if (weekNum === 5) {
+    return { bench: `5K TT #2 (~${target}) + Ski/Row 1000m TT`, title: base.title, detail: `Target ~${target}. Warm up 10 min + strides. Record it.` };
+  }
+  if (weekNum === 10) {
+    return { bench: `5K TT #3 (~${target}) + erg TTs`, title: base.title, detail: `Target ~${target}. Record.` };
+  }
+  const altPace = formatMMSS(Math.round((base.altPaceSeconds ?? 0) * factor));
+  return { bench: `5K TT #4 (~${target}) · peak mileage`, title: base.title, detail: `Target ~${target} (or 3km @${altPace}/km if legs are heavy). Record.` };
+}
+
+function scaleWeek(week: HyroxWeek, weekNum: number, factor: number): HyroxWeek {
   const pillars = {
-    lift: week.pillars.lift, // strength stays identical across tiers — running pace drives percentile, not lifting
+    lift: week.pillars.lift, // strength stays identical — running pace drives percentile, not lifting
     qualityRun: scaleSlot(week.pillars.qualityRun, factor),
     gym: week.pillars.gym,
     longOrSim: scaleSlot(week.pillars.longOrSim, factor),
   };
-  const fiveK = FIVE_K_OVERRIDES[tier][weekNum];
+  const fiveK = fiveKOverrideForWeek(weekNum, factor);
   if (fiveK) {
     pillars.qualityRun = ['run', fiveK.title, fiveK.detail];
     return { ...week, bench: fiveK.bench, pillars };
@@ -320,14 +381,12 @@ function scaleWeek(week: HyroxWeek, weekNum: number, tier: HyroxTier): HyroxWeek
   return { ...week, pillars };
 }
 
-export const WEEKS_BY_TIER: Record<HyroxTier, Record<number, HyroxWeek>> = {
-  top5: W,
-  top10: {},
-  top20: {},
-};
-for (let w = 1; w <= 18; w++) {
-  WEEKS_BY_TIER.top10[w] = scaleWeek(W[w], w, 'top10');
-  WEEKS_BY_TIER.top20[w] = scaleWeek(W[w], w, 'top20');
+/** Every week's content, scaled continuously to hit this target finish time. */
+export function weeksForTarget(targetSeconds: number): Record<number, HyroxWeek> {
+  const factor = targetSeconds / DOUBLES_BASELINE_SECONDS;
+  const weeks: Record<number, HyroxWeek> = {};
+  for (let w = 1; w <= 18; w++) weeks[w] = factor === 1 ? W[w] : scaleWeek(W[w], w, factor);
+  return weeks;
 }
 
 /* ================= PERSONALIZED SCHEDULE ================= */
@@ -389,11 +448,11 @@ export function personalToOriginalWeek(personalWeek: number, schedule: Pick<Doub
 export function buildPersonalDays(
   pillarDayMap: PillarDayMap = DEFAULT_PILLAR_DAY_MAP,
   recoveryChoices: RecoveryChoices = DEFAULT_RECOVERY_CHOICES,
-  tier: HyroxTier = 'top5',
+  targetSeconds: number = DOUBLES_BASELINE_SECONDS,
   raceDate: string = RACE_DAY,
   planStartDate: string = '',
 ): HyroxDay[] {
-  const weeks = WEEKS_BY_TIER[tier];
+  const weeks = weeksForTarget(targetSeconds);
   const dayToPillar = reversePillarMap(pillarDayMap);
   const week19Days = getWeek19Days(raceDate);
 
@@ -447,33 +506,20 @@ export function buildPersonalDays(
 export const ALL_DAYS: HyroxDay[] = buildPersonalDays();
 
 /* ================= REMEMBER / RACE CONTENT ================= */
-export const TARGETS_BY_TIER: Record<HyroxTier, [string, string][]> = {
-  top5: [
-    ["Men's Doubles Open — top 5%", 'sub 1:02:00'],
-    ['Mixed Doubles Open — top 5%', 'sub 1:06:00'],
-    ['Run pace (all 8 km, fatigued)', '4:05–4:30 /km'],
-    ['RoxZone total (8 transitions)', '< 5:00'],
-    ['5K by December', '~21:30–22:00'],
-  ],
-  top10: [
-    ["Men's Doubles Open — top 10%", 'sub 1:07:00'],
-    ['Mixed Doubles Open — top 10%', 'sub 1:11:00'],
-    ['Run pace (all 8 km, fatigued)', '4:20–4:50 /km'],
-    ['RoxZone total (8 transitions)', '< 5:30'],
-    ['5K by December', '~23:00–23:30'],
-  ],
-  top20: [
-    ["Men's Doubles Open — top 20%", 'sub 1:13:00'],
-    ['Mixed Doubles Open — top 20%', 'sub 1:17:00'],
-    ['Run pace (all 8 km, fatigued)', '4:35–5:05 /km'],
-    ['RoxZone total (8 transitions)', '< 6:00'],
-    ['5K by December', '~24:15–24:50'],
-  ],
-};
-// Top 10%/20% numbers are extrapolated from the plan's own dataset (only
-// top-5%/top-10%/top-50% benchmarks were given directly) — reasonable
-// estimates, not lab-validated splits.
-export const TARGETS: [string, string][] = TARGETS_BY_TIER.top5;
+// Run pace / RoxZone / 5K baselines at the plan's fastest (factor 1.0)
+// point, scaled continuously by target finish time — replaces 3
+// hand-picked tier rows with the same underlying math as everything
+// else in the plan. The finish-time row itself isn't scaled text, it's
+// literally the number the slider is set to.
+export function targetsForSeconds(targetSeconds: number): [string, string][] {
+  const factor = targetSeconds / DOUBLES_BASELINE_SECONDS;
+  return [
+    ['Doubles finish time', formatMMSS(targetSeconds)],
+    ['Run pace (all 8 km, fatigued)', scalePaces('4:05–4:30 /km', factor)],
+    ['RoxZone total (8 transitions)', `< ${formatMMSS(Math.round(300 * factor))}`],
+    ['5K by December', `~${formatMMSS(Math.round(1290 * factor))}–${formatMMSS(Math.round(1320 * factor))}`],
+  ];
+}
 
 export const RULES: string[] = [
   'Both partners run every km together — max 10 SECONDS apart (2026/27 rule). Warning, then 15s penalties.',

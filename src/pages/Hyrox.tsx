@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users, Copy, LogOut, Download, Printer } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,12 +14,14 @@ import { StationShowcase } from '../components/hyrox/StationShowcase';
 import { StationBenchmarkCurve, parseMMSS } from '../components/hyrox/StationBenchmarkCurve';
 import { HyroxOnboarding } from '../components/hyrox/HyroxOnboarding';
 import {
-  buildPersonalDays, WEEKS_BY_TIER, TARGETS_BY_TIER, TIER_LABEL, TIER_RECOVERY_FLOOR, WEEKDAYS,
-  phaseOf, RULES, STATIONS, STATION_FOULS, RACE_DAY, fmtDate, pretty, makeICS, START, WEEK19,
+  buildPersonalDays, weeksForTarget, targetsForSeconds, recoveryFloorForTarget,
+  doublesFinishPercentile, formatMMSS, DOUBLES_FINISH_PERCENTILES,
+  DOUBLES_BASELINE_SECONDS, DOUBLES_MIN_SECONDS, DOUBLES_MAX_SECONDS,
+  WEEKDAYS, phaseOf, RULES, STATIONS, STATION_FOULS, RACE_DAY, fmtDate, pretty, makeICS, START, WEEK19,
   computeDoublesSchedule, personalToOriginalWeek,
 } from '../data/hyroxPlan';
 import type {
-  HyroxTier, HyroxWeek, PillarRole, RecoveryOption,
+  HyroxWeek, PillarRole, RecoveryOption,
 } from '../types/hyrox';
 import { DEFAULT_PILLAR_DAY_MAP, DEFAULT_RECOVERY_CHOICES } from '../types/hyrox';
 
@@ -43,21 +45,6 @@ const RECOVERY_LABELS: Record<RecoveryOption, string> = {
   rest: 'Rest', easyWalk: 'Easy walk / mobility', easyRun: 'Easy run', easyLift: 'Easy lift',
 };
 const RECOVERY_OPTIONS: RecoveryOption[] = ['rest', 'easyWalk', 'easyRun', 'easyLift'];
-const TIER_ORDER: HyroxTier[] = ['top5', 'top10', 'top20'];
-
-const TIER_DESCRIPTIONS: Record<HyroxTier, string> = {
-  top5: 'Target: 1:02–1:05 team time (roughly the top 5% of finishers). The bold goal — needs disciplined pacing and all 4 core sessions every week. Only 1 mandatory recovery day: put the other 2 toward Easy Run if you can — running pace is what actually separates finishing times, not extra lifting.',
-  top10: 'Target: sub-1:07 team time. A strong, very achievable goal for a first Hyrox season. 2 mandatory recovery days — more room to recover between hard sessions than Top 5%.',
-  top20: 'Target: sub-1:13 team time. The safest on-ramp, built for people newer to structured running. All 3 recovery days stay Rest/Walk while you build a base — nothing optional to add yet.',
-};
-
-// Every downgrade gets its own line instead of one reused message —
-// escalates with how big the drop is.
-const DOWNGRADE_MESSAGES: Record<string, string> = {
-  'top5->top10': "Sure? Top 5% is where the real gains are — Top 10% is a real downgrade, not just a label. 😏",
-  'top5->top20': "Skipping straight past Top 10% to Top 20%? That's not pacing yourself, that's opting out. 😬",
-  'top10->top20': "Downgrading again? Bold strategy — let's see if it pays off. 🫡",
-};
 
 // One extra run day is exactly what "Easy Run" is — the highest-leverage
 // upgrade on a recovery day, since running pace (not strength) decides
@@ -72,73 +59,116 @@ const RECOVERY_DESCRIPTIONS: Record<RecoveryOption, string> = {
 
 type Tab = 'today' | 'plan' | 'track' | 'group' | 'race' | 'setup';
 
-// Where each tier's target sits along an illustrative distribution — not
-// pulled from a real race database (unlike hyresult.com, which is what
-// this is modeled after), just the 3 tier values we already compute
-// placed on a generic bell curve so the number has a shape, not just
-// text. Top 5% sits furthest left (fastest/best), Top 20% furthest right.
-const CURVE_TIER_X: Record<HyroxTier, number> = { top5: 0.26, top10: 0.44, top20: 0.64 };
-const CURVE_PEAK_X = 0.55;
-const CURVE_SIGMA = 0.28;
-const curveHeightAt = (x: number) => Math.exp(-((x - CURVE_PEAK_X) ** 2) / (2 * CURVE_SIGMA * CURVE_SIGMA));
+const DOUBLES_CURVE_COLOR = '#2B6CB0';
 
-function TargetCurve({ label, values, tier, color }: { label: string; values: Record<HyroxTier, string>; tier: HyroxTier; color: string }) {
-  const tokens = useThemeTokens();
-  const width = 280;
-  const height = 64;
-  const padX = 4;
-  const padTop = 10;
-  const baseline = height - 16;
-
-  const toSvgX = (x: number) => padX + x * (width - padX * 2);
-  const toSvgY = (y: number) => baseline - y * (baseline - padTop);
-
-  const points: string[] = [];
-  for (let i = 0; i <= 40; i++) {
-    const x = i / 40;
-    points.push(`${i === 0 ? 'M' : 'L'} ${toSvgX(x).toFixed(1)} ${toSvgY(curveHeightAt(x)).toFixed(1)}`);
+/** Catmull-Rom -> cubic Bezier through real points — smooths the line between
+ * them without inventing values, same technique as StationBenchmarkCurve. */
+function smoothPathD(points: [number, number][]): string {
+  if (points.length < 2) return '';
+  const d: string[] = [`M ${points[0][0].toFixed(1)} ${points[0][1].toFixed(1)}`];
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] ?? points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] ?? p2;
+    const cp1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const cp1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const cp2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const cp2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d.push(`C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)} ${cp2x.toFixed(1)} ${cp2y.toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`);
   }
-  const pathD = points.join(' ');
-  const areaD = `${pathD} L ${toSvgX(1)} ${baseline} L ${toSvgX(0)} ${baseline} Z`;
-  const gradId = `target-curve-${label.replace(/[^a-zA-Z0-9]/g, '')}`;
+  return d.join(' ');
+}
+
+/**
+ * Real cumulative finish-time distribution (percentile vs. time), built
+ * from the 7 actual sampled brackets in DOUBLES_FINISH_PERCENTILES —
+ * not a fabricated bell curve. Replaces the old 5-card TargetCurve grid,
+ * which plotted every metric on the same invented Gaussian regardless
+ * of its real shape.
+ */
+function DoublesFinishCurve({ targetSeconds }: { targetSeconds: number }) {
+  const tokens = useThemeTokens();
+  const width = 300, height = 90, padTop = 8, baseline = height - 18;
+  const toSvgX = (seconds: number) => ((seconds - DOUBLES_MIN_SECONDS) / (DOUBLES_MAX_SECONDS - DOUBLES_MIN_SECONDS)) * width;
+  const toSvgY = (pct: number) => baseline - (pct / 100) * (baseline - padTop);
+
+  const svgPoints: [number, number][] = DOUBLES_FINISH_PERCENTILES.map(([s, p]) => [toSvgX(s), toSvgY(p)]);
+  const pathD = smoothPathD(svgPoints);
+  const areaD = `${pathD} L ${width} ${baseline} L 0 ${baseline} Z`;
+
+  const clamped = Math.max(DOUBLES_MIN_SECONDS, Math.min(DOUBLES_MAX_SECONDS, targetSeconds));
+  const markerX = toSvgX(clamped);
+  const pct = doublesFinishPercentile(clamped);
+  const markerY = toSvgY(pct);
 
   return (
-    <div className="rounded-lg p-3 mb-2.5" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
+    <div className="rounded-lg p-3.5 mb-2.5" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
       <div className="flex justify-between items-baseline mb-1">
-        <span className="text-sm font-semibold text-primary">{label}</span>
-        <span className="text-base font-bold font-mono" style={{ color }}>{values[tier]}</span>
+        <span className="text-sm font-semibold text-primary">Doubles finish time</span>
+        <span className="text-base font-bold font-mono" style={{ color: DOUBLES_CURVE_COLOR }}>{formatMMSS(targetSeconds)}</span>
       </div>
       <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} preserveAspectRatio="none">
         <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.45" />
-            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          <linearGradient id="doubles-finish-curve" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={DOUBLES_CURVE_COLOR} stopOpacity="0.35" />
+            <stop offset="100%" stopColor={DOUBLES_CURVE_COLOR} stopOpacity="0" />
           </linearGradient>
         </defs>
-        <path d={areaD} fill={`url(#${gradId})`} />
-        <path d={pathD} fill="none" stroke={color} strokeWidth={2} strokeOpacity={0.8} />
-        <line x1={padX} y1={baseline} x2={width - padX} y2={baseline} stroke="var(--border-subtle)" strokeWidth={1} />
-        {TIER_ORDER.map((t) => {
-          const x = CURVE_TIER_X[t];
-          const cx = toSvgX(x);
-          const cy = toSvgY(curveHeightAt(x));
-          const isCurrent = t === tier;
-          return (
-            <g key={t}>
-              <line x1={cx} y1={cy} x2={cx} y2={baseline} stroke={color} strokeOpacity={isCurrent ? 0.55 : 0.2} strokeDasharray="2,3" />
-              <circle cx={cx} cy={cy} r={isCurrent ? 6 : 3.5} fill={isCurrent ? color : tokens.surface.elevated} stroke={color} strokeWidth={isCurrent ? 0 : 1.5} />
-            </g>
-          );
-        })}
+        <path d={areaD} fill="url(#doubles-finish-curve)" />
+        <path d={pathD} fill="none" stroke={DOUBLES_CURVE_COLOR} strokeWidth={2} strokeOpacity={0.85} />
+        <line x1={0} y1={baseline} x2={width} y2={baseline} stroke="var(--border-subtle)" strokeWidth={1} />
+        <line x1={markerX} y1={markerY} x2={markerX} y2={baseline} stroke={DOUBLES_CURVE_COLOR} strokeWidth={1.5} strokeDasharray="2,3" />
+        <circle cx={markerX} cy={markerY} r={6} fill={DOUBLES_CURVE_COLOR} stroke={tokens.surface.elevated} strokeWidth={1.5} />
       </svg>
-      <div className="flex justify-between text-[10px] mt-0.5">
-        {TIER_ORDER.map((t) => (
-          <span key={t} className={t === tier ? '' : 'text-secondary'} style={{ fontWeight: t === tier ? 800 : 400, color: t === tier ? color : undefined }}>
-            {TIER_LABEL[t]}
-          </span>
-        ))}
+      <div className="flex justify-between text-[10px] text-secondary mt-0.5">
+        <span>{formatMMSS(DOUBLES_MIN_SECONDS)}</span>
+        <span>{formatMMSS(DOUBLES_MAX_SECONDS)}</span>
+      </div>
+      <div className="text-xs font-bold mt-1.5" style={{ color: DOUBLES_CURVE_COLOR }}>
+        Top {pct < 1 ? '<1' : pct.toFixed(0)}% — real Doubles results (425,000+, all divisions)
       </div>
     </div>
+  );
+}
+
+// Quick-pick buttons snap straight to real percentile brackets, not
+// arbitrary round numbers.
+const QUICK_DOUBLES_TARGETS: [number, string][] = [
+  [3761, 'Top 5%'], [3973, 'Top 10%'], [4879, 'Median'], [6180, 'Top 90%'],
+];
+
+/** Shared by onboarding and Setup — same slider, same real curve, same everywhere. */
+function DoublesAmbitionPicker({ value, onChange }: { value: number; onChange: (seconds: number) => void }) {
+  const tokens = useThemeTokens();
+  return (
+    <>
+      <div className="text-sm font-black text-primary mb-1">TARGET FINISH TIME</div>
+      <div className="text-xs text-secondary mb-3">
+        Every pace, rest requirement, and week's content scales to hit this number — based on real Doubles race results, not a fixed tier.
+      </div>
+      <input
+        type="range" min={DOUBLES_MIN_SECONDS} max={DOUBLES_MAX_SECONDS} step={15}
+        value={value}
+        onChange={(e) => onChange(parseInt(e.target.value, 10))}
+        className="w-full mb-3"
+      />
+      <div className="flex gap-2 flex-wrap mb-3">
+        {QUICK_DOUBLES_TARGETS.map(([secs, label]) => (
+          <button
+            key={secs}
+            onClick={() => onChange(secs)}
+            className="px-2.5 py-1 rounded-full text-xs font-semibold"
+            style={value === secs
+              ? { background: DOUBLES_CURVE_COLOR, color: '#fff' }
+              : { background: 'transparent', color: tokens.text.secondary, border: '1px solid var(--border-subtle)' }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <DoublesFinishCurve targetSeconds={value} />
+    </>
   );
 }
 
@@ -155,7 +185,6 @@ export default function Hyrox() {
   const [joinCode, setJoinCode] = useState('');
   const [groupBusy, setGroupBusy] = useState(false);
   const [groupErr, setGroupErr] = useState('');
-  const [pendingTier, setPendingTier] = useState<HyroxTier | null>(null);
 
   const { data: progress } = useHyroxProgress(user?.id);
   const saveProgressRemote = useSaveHyroxProgress(user?.id);
@@ -172,11 +201,26 @@ export default function Hyrox() {
   const stations = user ? (progress?.stations ?? {}) : guestProgress.stations;
   const pillarDayMap = user ? (progress?.pillarDayMap ?? DEFAULT_PILLAR_DAY_MAP) : guestProgress.pillarDayMap;
   const recoveryChoices = user ? (progress?.recoveryChoices ?? DEFAULT_RECOVERY_CHOICES) : guestProgress.recoveryChoices;
-  const tier: HyroxTier = user ? (progress?.tier ?? 'top5') : guestProgress.tier;
+  const doublesTargetSeconds = user ? (progress?.doublesTargetSeconds ?? DOUBLES_BASELINE_SECONDS) : guestProgress.doublesTargetSeconds;
   const raceDate = user ? (progress?.raceDate ?? RACE_DAY) : guestProgress.raceDate;
   const planStartDate = user ? (progress?.planStartDate ?? '') : guestProgress.planStartDate;
 
-  const saveProgress = (patch: Partial<Pick<typeof guestProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'pillarDayMap' | 'recoveryChoices' | 'tier' | 'raceDate' | 'planStartDate'>>) => {
+  // Instant visual feedback while dragging the ambition slider, actual
+  // save debounced — binding every derived value straight to the saved
+  // (Supabase-backed) value made every drag tick wait on a network
+  // round-trip before anything moved. Same pattern as the Hybrid plan's
+  // target-time slider.
+  const [liveDoublesTarget, setLiveDoublesTarget] = useState(doublesTargetSeconds);
+  const doublesTargetSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    setLiveDoublesTarget(doublesTargetSeconds);
+  }, [doublesTargetSeconds]);
+  useEffect(() => () => {
+    if (doublesTargetSaveTimeout.current) clearTimeout(doublesTargetSaveTimeout.current);
+  }, []);
+  const doublesRecoveryFloor = recoveryFloorForTarget(liveDoublesTarget);
+
+  const saveProgress = (patch: Partial<Pick<typeof guestProgress, 'done' | 'times' | 'benchmarks' | 'stations' | 'pillarDayMap' | 'recoveryChoices' | 'doublesTargetSeconds' | 'raceDate' | 'planStartDate'>>) => {
     if (user) {
       saveProgressRemote(patch).catch((err) => console.error('Failed to save Hyrox progress:', err));
     } else {
@@ -186,29 +230,19 @@ export default function Hyrox() {
 
   // planStartDate empty means this person has never actually gone
   // through onboarding — shown as a modal (see HyroxOnboarding render
-  // below) instead of silently defaulting race date/start date/tier to
+  // below) instead of silently defaulting race date/start date/ambition to
   // today + hardcoded constants, so the first-touch choice is visible
   // and deliberate rather than invisible.
   const needsOnboarding = !planStartDate && (user ? progress !== undefined : true);
 
-  const weeks = WEEKS_BY_TIER[tier];
-  const TARGET_CURVE_COLORS = ['#B7791F', '#C05621', '#2B6CB0', '#0891B2', '#E03131'];
-  const targetCurves = TARGETS_BY_TIER.top5.map(([label], i) => ({
-    label,
-    color: TARGET_CURVE_COLORS[i % TARGET_CURVE_COLORS.length],
-    values: {
-      top5: TARGETS_BY_TIER.top5[i][1],
-      top10: TARGETS_BY_TIER.top10[i][1],
-      top20: TARGETS_BY_TIER.top20[i][1],
-    } as Record<HyroxTier, string>,
-  }));
+  const weeks = useMemo(() => weeksForTarget(liveDoublesTarget), [liveDoublesTarget]);
   const recoveryDays = useMemo(
     () => WEEKDAYS.filter((dw) => !Object.values(pillarDayMap).includes(dw)),
     [pillarDayMap],
   );
   const days = useMemo(
-    () => buildPersonalDays(pillarDayMap, recoveryChoices, tier, raceDate, planStartDate),
-    [pillarDayMap, recoveryChoices, tier, raceDate, planStartDate],
+    () => buildPersonalDays(pillarDayMap, recoveryChoices, liveDoublesTarget, raceDate, planStartDate),
+    [pillarDayMap, recoveryChoices, liveDoublesTarget, raceDate, planStartDate],
   );
   // Only meaningful once planStartDate is captured; falls back to no
   // compression (weekOffset 0) for the brief window before that happens.
@@ -294,26 +328,24 @@ export default function Hyrox() {
 
   const setRecoveryChoice = (day: string, option: RecoveryOption) => {
     const next = { ...recoveryChoices, [day]: option };
-    const floor = TIER_RECOVERY_FLOOR[tier];
-    if (recoveryFloorCount(next) < floor) return; // would drop below this tier's mandatory recovery floor
+    const floor = recoveryFloorForTarget(doublesTargetSeconds);
+    if (recoveryFloorCount(next) < floor) return; // would drop below this target's mandatory recovery floor
     saveProgress({ recoveryChoices: next });
   };
 
-  const applyTier = (newTier: HyroxTier) => {
-    const floor = TIER_RECOVERY_FLOOR[newTier];
-    const nextRecovery = { ...recoveryChoices };
-    for (const d of recoveryDays) {
-      if (recoveryFloorCount(nextRecovery) >= floor) break;
-      if (nextRecovery[d] !== 'rest' && nextRecovery[d] !== 'easyWalk') nextRecovery[d] = 'rest';
-    }
-    saveProgress({ tier: newTier, recoveryChoices: nextRecovery });
-    setPendingTier(null);
-  };
-
-  const selectTier = (newTier: HyroxTier) => {
-    if (newTier === tier) return;
-    const isDowngrade = TIER_ORDER.indexOf(newTier) > TIER_ORDER.indexOf(tier);
-    if (isDowngrade) setPendingTier(newTier); else applyTier(newTier);
+  const setDoublesTarget = (seconds: number) => {
+    const clamped = Math.max(DOUBLES_MIN_SECONDS, Math.min(DOUBLES_MAX_SECONDS, seconds));
+    setLiveDoublesTarget(clamped);
+    if (doublesTargetSaveTimeout.current) clearTimeout(doublesTargetSaveTimeout.current);
+    doublesTargetSaveTimeout.current = setTimeout(() => {
+      const floor = recoveryFloorForTarget(clamped);
+      const nextRecovery = { ...recoveryChoices };
+      for (const d of recoveryDays) {
+        if (recoveryFloorCount(nextRecovery) >= floor) break;
+        if (nextRecovery[d] !== 'rest' && nextRecovery[d] !== 'easyWalk') nextRecovery[d] = 'rest';
+      }
+      saveProgress({ doublesTargetSeconds: clamped, recoveryChoices: nextRecovery });
+    }, 400);
   };
 
   const handleCreateGroup = async () => {
@@ -358,22 +390,7 @@ export default function Hyrox() {
           raceDateDefault={RACE_DAY}
           onComplete={(newRaceDate, newStartDate) => saveProgress({ raceDate: newRaceDate, planStartDate: newStartDate })}
         >
-          <div className="text-sm font-black text-primary mb-1">AMBITION TIER</div>
-          <div className="text-xs text-secondary mb-3">Changes pacing targets and how much rest is required.</div>
-          <div className="flex gap-2">
-            {TIER_ORDER.map((t) => (
-              <button
-                key={t}
-                onClick={() => applyTier(t)}
-                className="flex-1 py-2 rounded-md font-bold text-sm"
-                style={tier === t
-                  ? { background: tokens.button.primaryBg, color: tokens.button.primaryText }
-                  : { background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
-              >
-                {TIER_LABEL[t]}
-              </button>
-            ))}
-          </div>
+          <DoublesAmbitionPicker value={liveDoublesTarget} onChange={setDoublesTarget} />
         </HyroxOnboarding>
       )}
       <style>{`
@@ -406,7 +423,7 @@ export default function Hyrox() {
       <div className="no-print flex items-center justify-between rounded-lg p-4 mb-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
         <div>
           <div className="text-xl font-black text-primary">HYROX ROAD</div>
-          <div className="text-xs text-secondary font-mono mt-0.5">DOUBLES OPEN · {new Date(raceDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase()} · {TIER_LABEL[tier]}</div>
+          <div className="text-xs text-secondary font-mono mt-0.5">DOUBLES OPEN · {new Date(raceDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase()} · TARGET {formatMMSS(doublesTargetSeconds)}</div>
         </div>
         <ProgressRing value={planElapsedFraction} color="#E03131" center={String(daysToRace)} sublabel="DAYS TO RACE" />
       </div>
@@ -627,39 +644,7 @@ export default function Hyrox() {
           </div>
 
           <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
-            <div className="text-sm font-black text-primary mb-1">AMBITION TIER</div>
-            <div className="text-xs text-secondary mb-3">Changes pacing targets and how much rest is required. Top 5% is the expectation — downgrading needs a confirm.</div>
-            <div className="flex gap-2">
-              {TIER_ORDER.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => selectTier(t)}
-                  className="flex-1 py-2 rounded-md font-bold text-sm"
-                  style={tier === t
-                    ? { background: tokens.button.primaryBg, color: tokens.button.primaryText }
-                    : { background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
-                >
-                  {TIER_LABEL[t]}
-                </button>
-              ))}
-            </div>
-            <div className="text-sm text-primary mt-3 rounded-md p-3" style={{ background: tokens.surface.accent }}>
-              {TIER_DESCRIPTIONS[tier]}
-            </div>
-            {pendingTier && (
-              <div className="mt-3 rounded-md p-3 text-sm" style={{ background: tokens.chip.background, color: tokens.chip.text }}>
-                {DOWNGRADE_MESSAGES[`${tier}->${pendingTier}`] ?? `Sure? ${TIER_LABEL[tier]} is where the real gains are — ${TIER_LABEL[pendingTier]} is a real downgrade, not just a label. 😏`}
-                <div className="mt-1 opacity-80">{TIER_DESCRIPTIONS[pendingTier]}</div>
-                <div className="flex gap-2 mt-2">
-                  <button onClick={() => applyTier(pendingTier)} className="px-3 py-1.5 rounded font-bold text-xs" style={{ background: tokens.button.primaryBg, color: tokens.button.primaryText }}>
-                    Yes, downgrade
-                  </button>
-                  <button onClick={() => setPendingTier(null)} className="px-3 py-1.5 rounded font-bold text-xs" style={{ border: '1px solid var(--border-subtle)' }}>
-                    Never mind
-                  </button>
-                </div>
-              </div>
-            )}
+            <DoublesAmbitionPicker value={liveDoublesTarget} onChange={setDoublesTarget} />
           </div>
 
           <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
@@ -705,18 +690,18 @@ export default function Hyrox() {
 
             <div
               className="text-xs font-bold mb-3 rounded-md px-2.5 py-1.5 inline-block"
-              style={recoveryFloorCount(recoveryChoices) >= TIER_RECOVERY_FLOOR[tier]
+              style={recoveryFloorCount(recoveryChoices) >= doublesRecoveryFloor
                 ? { background: 'rgba(34,197,94,0.15)', color: '#16A34A' }
                 : { background: tokens.chip.background, color: tokens.chip.text }}
             >
-              {recoveryFloorCount(recoveryChoices) >= TIER_RECOVERY_FLOOR[tier]
+              {recoveryFloorCount(recoveryChoices) >= doublesRecoveryFloor
                 ? `✓ Recovery requirement met (${recoveryFloorCount(recoveryChoices)} of ${recoveryDays.length} days)`
-                : `${TIER_LABEL[tier]} needs ${TIER_RECOVERY_FLOOR[tier] - recoveryFloorCount(recoveryChoices)} more Rest/Walk day${TIER_RECOVERY_FLOOR[tier] - recoveryFloorCount(recoveryChoices) > 1 ? 's' : ''}`}
+                : `Target ${formatMMSS(liveDoublesTarget)} needs ${doublesRecoveryFloor - recoveryFloorCount(recoveryChoices)} more Rest/Walk day${doublesRecoveryFloor - recoveryFloorCount(recoveryChoices) > 1 ? 's' : ''}`}
             </div>
 
-            {tier !== 'top20' && recoveryFloorCount(recoveryChoices) > TIER_RECOVERY_FLOOR[tier] && (
+            {doublesRecoveryFloor < 4 && recoveryFloorCount(recoveryChoices) > doublesRecoveryFloor && (
               <div className="text-xs rounded-md p-2.5 mb-3" style={{ background: 'rgba(234,88,12,0.12)', color: '#C2410C' }}>
-                You're resting {recoveryFloorCount(recoveryChoices) - TIER_RECOVERY_FLOOR[tier]} more day{recoveryFloorCount(recoveryChoices) - TIER_RECOVERY_FLOOR[tier] > 1 ? 's' : ''} than {TIER_LABEL[tier]} requires. That's the safe floor, not the target — if you actually want {TIER_LABEL[tier]}, switch a Rest day to Easy Run: running pace is what closes the gap, not extra recovery.
+                You're resting {recoveryFloorCount(recoveryChoices) - doublesRecoveryFloor} more day{recoveryFloorCount(recoveryChoices) - doublesRecoveryFloor > 1 ? 's' : ''} than target {formatMMSS(liveDoublesTarget)} requires. That's the safe floor, not the target — if you actually want that time, switch a Rest day to Easy Run: running pace is what closes the gap, not extra recovery.
               </div>
             )}
 
@@ -730,7 +715,7 @@ export default function Hyrox() {
                       const isCurrent = opt === current;
                       const disabled = !isCurrent
                         && (opt === 'easyRun' || opt === 'easyLift')
-                        && recoveryFloorCount({ ...recoveryChoices, [dw]: opt }) < TIER_RECOVERY_FLOOR[tier];
+                        && recoveryFloorCount({ ...recoveryChoices, [dw]: opt }) < doublesRecoveryFloor;
                       return (
                         <button
                           key={opt}
@@ -906,11 +891,17 @@ export default function Hyrox() {
       {/* RACE / REMEMBER */}
       {tab === 'race' && !printMode && (
         <div className="no-print">
-          <div className="text-base font-black text-primary mb-2">TARGETS <span className="text-xs text-secondary font-normal">({TIER_LABEL[tier]})</span></div>
+          <div className="text-base font-black text-primary mb-2">TARGETS <span className="text-xs text-secondary font-normal">(target {formatMMSS(liveDoublesTarget)})</span></div>
           <div className="mb-4">
-            {targetCurves.map((tc) => (
-              <TargetCurve key={tc.label} label={tc.label} values={tc.values} tier={tier} color={tc.color} />
-            ))}
+            <DoublesFinishCurve targetSeconds={liveDoublesTarget} />
+            <div className="rounded-lg p-3.5" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
+              {targetsForSeconds(liveDoublesTarget).slice(1).map(([label, value]) => (
+                <div key={label} className="flex justify-between items-center py-1.5" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <span className="text-sm text-primary">{label}</span>
+                  <span className="text-sm font-bold font-mono text-secondary">{value}</span>
+                </div>
+              ))}
+            </div>
           </div>
           <div className="text-base font-black text-primary mb-2">NEVER FORGET</div>
           <div className="rounded-lg p-3.5 mb-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>

@@ -76,6 +76,11 @@ export interface HyroxProgress {
   stations: Record<string, string>;
   pillarDayMap: PillarDayMap;
   recoveryChoices: RecoveryChoices;
+  // Legacy — no longer read or written by the app. The Doubles plan
+  // used to offer 3 discrete tiers (top5/10/20%); replaced by a
+  // continuous target-time slider (doublesTargetSeconds below), same
+  // pattern as the Hybrid plan. Column/field kept rather than dropped
+  // so existing rows don't need a destructive migration.
   tier: HyroxTier;
   // ISO date (YYYY-MM-DD). Different people in the same group can have
   // different real race dates (e.g. different heats of the same event
@@ -84,8 +89,12 @@ export interface HyroxProgress {
   planId: HyroxPlanId;
   // Hybrid plan only: target total race time in seconds (e.g. 3540 = 59:00),
   // used to scale its running/station targets. Meaningless for 'doubles'
-  // (which uses `tier` instead) but kept on the same shared row.
+  // (which uses doublesTargetSeconds instead) but kept on the same shared row.
   targetTotalSeconds: number;
+  // Doubles plan only: target team finish time in seconds (e.g. 3761 =
+  // 1:02:41), used to scale its running/station/week content and to
+  // look up a real finish-time percentile. Meaningless for 'hybrid'.
+  doublesTargetSeconds: number;
   // ISO date (YYYY-MM-DD), or '' if not yet captured. The day someone
   // actually started using the plan — captured once, automatically, the
   // first time their progress loads with this field empty, then left
@@ -129,6 +138,7 @@ export const HYROX_PROGRESS_EMPTY: Omit<HyroxProgress, 'userId' | 'updatedAt'> =
   raceDate: DEFAULT_RACE_DATE,
   planId: 'doubles',
   targetTotalSeconds: 3540, // 59:00 — the hybrid plan's sub-60 baseline
+  doublesTargetSeconds: 3761, // 1:02:41 — the doubles plan's real Top 5% baseline (must match DOUBLES_BASELINE_SECONDS in hyroxPlan.ts)
   planStartDate: '',
 };
 
