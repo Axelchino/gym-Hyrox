@@ -12,6 +12,7 @@ import { DayRow, TYPE_COLOR, TYPE_LABEL } from '../components/hyrox/DayRow';
 import { ProgressRing } from '../components/hyrox/ProgressRing';
 import { StationShowcase } from '../components/hyrox/StationShowcase';
 import { StationBenchmarkCurve, parseMMSS } from '../components/hyrox/StationBenchmarkCurve';
+import { HyroxOnboarding } from '../components/hyrox/HyroxOnboarding';
 import {
   buildPersonalDays, WEEKS_BY_TIER, TARGETS_BY_TIER, TIER_LABEL, TIER_RECOVERY_FLOOR, WEEKDAYS,
   phaseOf, RULES, STATIONS, STATION_FOULS, RACE_DAY, fmtDate, pretty, makeICS, START, WEEK19,
@@ -183,16 +184,12 @@ export default function Hyrox() {
     }
   };
 
-  // Captured once, the first time this loads with no start date set, then
-  // left fixed — so opening the app always looks like Day 1 instead of
-  // landing mid-plan with an invented backlog of days you never had a
-  // chance to do.
-  useEffect(() => {
-    if (!planStartDate && (user ? progress !== undefined : true)) {
-      saveProgress({ planStartDate: fmtDate(new Date()) });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planStartDate, user, progress]);
+  // planStartDate empty means this person has never actually gone
+  // through onboarding — shown as a modal (see HyroxOnboarding render
+  // below) instead of silently defaulting race date/start date/tier to
+  // today + hardcoded constants, so the first-touch choice is visible
+  // and deliberate rather than invisible.
+  const needsOnboarding = !planStartDate && (user ? progress !== undefined : true);
 
   const weeks = WEEKS_BY_TIER[tier];
   const TARGET_CURVE_COLORS = ['#B7791F', '#C05621', '#2B6CB0', '#0891B2', '#E03131'];
@@ -356,6 +353,29 @@ export default function Hyrox() {
 
   return (
     <div className="hyrox-print-area max-w-3xl mx-auto px-4 pb-16 pt-4">
+      {needsOnboarding && (
+        <HyroxOnboarding
+          raceDateDefault={RACE_DAY}
+          onComplete={(newRaceDate, newStartDate) => saveProgress({ raceDate: newRaceDate, planStartDate: newStartDate })}
+        >
+          <div className="text-sm font-black text-primary mb-1">AMBITION TIER</div>
+          <div className="text-xs text-secondary mb-3">Changes pacing targets and how much rest is required.</div>
+          <div className="flex gap-2">
+            {TIER_ORDER.map((t) => (
+              <button
+                key={t}
+                onClick={() => applyTier(t)}
+                className="flex-1 py-2 rounded-md font-bold text-sm"
+                style={tier === t
+                  ? { background: tokens.button.primaryBg, color: tokens.button.primaryText }
+                  : { background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}
+              >
+                {TIER_LABEL[t]}
+              </button>
+            ))}
+          </div>
+        </HyroxOnboarding>
+      )}
       <style>{`
         @media print {
           /* Hide the surrounding app chrome (header/nav/banners) entirely —

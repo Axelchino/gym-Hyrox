@@ -12,6 +12,7 @@ import { DayRow, TYPE_COLOR, TYPE_LABEL } from '../components/hyrox/DayRow';
 import { ProgressRing } from '../components/hyrox/ProgressRing';
 import { StationShowcase } from '../components/hyrox/StationShowcase';
 import { StationBenchmarkCurve, parseMMSS } from '../components/hyrox/StationBenchmarkCurve';
+import { HyroxOnboarding } from '../components/hyrox/HyroxOnboarding';
 import { STATIONS, WEEKDAYS, fmtDate, pretty, makeICS, STATION_FOULS } from '../data/hyroxPlan';
 import {
   buildHybridPersonalDays, hybridTargetsForTime, hybridWeeklyRunningKm,
@@ -83,16 +84,12 @@ export default function HyroxHybrid() {
     }
   };
 
-  // Captured once, the first time this loads with no start date set, then
-  // left fixed — so opening the app always looks like Day 1 instead of
-  // landing mid-plan with an invented backlog of days never had a chance
-  // to do.
-  useEffect(() => {
-    if (!planStartDate && (user ? progress !== undefined : true)) {
-      saveProgress({ planStartDate: fmtDate(new Date()) });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planStartDate, user, progress]);
+  // planStartDate empty means this person has never actually gone
+  // through onboarding — shown as a modal (see HyroxOnboarding render
+  // below) instead of silently defaulting race date/start date/target
+  // time to today + hardcoded constants, so the first-touch choice is
+  // visible and deliberate rather than invisible.
+  const needsOnboarding = !planStartDate && (user ? progress !== undefined : true);
 
   const days = useMemo(
     () => buildHybridPersonalDays(raceDate, liveTargetSeconds, planStartDate),
@@ -183,6 +180,38 @@ export default function HyroxHybrid() {
 
   return (
     <div className="hyrox-print-area max-w-3xl mx-auto px-4 pb-16 pt-4">
+      {needsOnboarding && (
+        <HyroxOnboarding
+          raceDateDefault={DEFAULT_RACE_DATE}
+          onComplete={(newRaceDate, newStartDate) => saveProgress({ raceDate: newRaceDate, planStartDate: newStartDate })}
+        >
+          <div className="text-sm font-black text-primary mb-1">TARGET RACE TIME</div>
+          <div className="text-xs text-secondary mb-3">
+            Your target total HYROX finish time. Every pace and station target scales to hit this number.
+          </div>
+          <div className="text-3xl font-black text-primary mb-2" style={{ color: '#E03131' }}>{targets.totalLabel}</div>
+          <input
+            type="range" min={HYBRID_MIN_SECONDS} max={HYBRID_MAX_SECONDS} step={15}
+            value={liveTargetSeconds}
+            onChange={(e) => setTargetTime(parseInt(e.target.value, 10))}
+            className="w-full mb-3"
+          />
+          <div className="flex gap-2 flex-wrap">
+            {QUICK_TARGETS.map((secs) => (
+              <button
+                key={secs}
+                onClick={() => setTargetTime(secs)}
+                className="px-2.5 py-1 rounded-full text-xs font-semibold"
+                style={liveTargetSeconds === secs
+                  ? { background: '#E03131', color: '#fff' }
+                  : { background: 'transparent', color: tokens.text.secondary, border: '1px solid var(--border-subtle)' }}
+              >
+                {formatMMSS(secs)}
+              </button>
+            ))}
+          </div>
+        </HyroxOnboarding>
+      )}
       <style>{`
         @media print {
           html, body { background: #fff !important; }
