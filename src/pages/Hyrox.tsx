@@ -781,7 +781,7 @@ export default function Hyrox() {
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-semibold text-primary">{s}</span>
                     <input
-                      type="text" placeholder="—:—"
+                      type="text" placeholder="m:ss"
                       value={liveValue}
                       onChange={(e) => setStationDraft({ ...stationDraft, [s]: e.target.value })}
                       onBlur={(e) => saveProgress({ stations: { ...stations, [s]: e.target.value } })}
