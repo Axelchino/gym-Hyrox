@@ -185,7 +185,7 @@ export default function HyroxHybrid() {
         <div>
           <div className="text-xl font-black text-primary flex items-center gap-1.5"><Flame size={20} color="#E03131" /> HYBRID ROAD</div>
           <div className="text-xs text-secondary font-mono mt-0.5">
-            TARGET {targets.totalLabel} · {new Date(raceDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase()}
+            TARGET FINISH {targets.totalLabel} · {new Date(raceDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase()}
           </div>
         </div>
         <ProgressRing value={planElapsedFraction} color="#E03131" center={String(daysToRace)} sublabel="DAYS TO RACE" />
@@ -358,7 +358,7 @@ export default function HyroxHybrid() {
           <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
             <div className="text-sm font-black text-primary mb-1">TARGET RACE TIME</div>
             <div className="text-xs text-secondary mb-3">
-              Not a fixed tier — a calculated budget. Every running pace and station target below scales against this number, the same math the source plan uses for its own sub-60 baseline.
+              Your target total HYROX finish time — running + stations + transitions combined. Not a fixed tier: every pace and station target below scales to hit this number, the same way the source plan's own "sub-60" (under 60 minutes) baseline works. Shown at the top of every tab as TARGET FINISH.
             </div>
             <div className="text-3xl font-black text-primary mb-2" style={{ color: '#E03131' }}>{targets.totalLabel}</div>
             <input
