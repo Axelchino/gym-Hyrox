@@ -10,7 +10,7 @@ import { createGroup, joinGroup, leaveGroup, isHyroxAdmin } from '../services/hy
 import { TimeWheelPicker } from '../components/hyrox/TimeWheelPicker';
 import { DayRow, TYPE_COLOR, TYPE_LABEL } from '../components/hyrox/DayRow';
 import { ProgressRing } from '../components/hyrox/ProgressRing';
-import { StationFoulCard } from '../components/hyrox/StationDiagram';
+import { StationShowcase } from '../components/hyrox/StationShowcase';
 import { STATIONS, WEEKDAYS, fmtDate, pretty, makeICS, STATION_FOULS } from '../data/hyroxPlan';
 import {
   buildHybridPersonalDays, hybridTargetsForTime, hybridWeeklyRunningKm,
@@ -599,11 +599,7 @@ export default function HyroxHybrid() {
           <div className="text-xs text-secondary mb-2">
             Common Hyrox judging standards — worth a final check against the official rulebook before race day, since penalty specifics can change season to season.
           </div>
-          <div className="rounded-lg p-3.5" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
-            {STATION_FOULS.map(([station, fouls]) => (
-              <StationFoulCard key={station} station={station} fouls={fouls} />
-            ))}
-          </div>
+          <StationShowcase stations={STATION_FOULS} />
         </div>
       )}
     </div>

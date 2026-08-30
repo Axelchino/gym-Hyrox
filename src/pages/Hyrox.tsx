@@ -10,7 +10,7 @@ import { createGroup, joinGroup, leaveGroup, isHyroxAdmin } from '../services/hy
 import { TimeWheelPicker } from '../components/hyrox/TimeWheelPicker';
 import { DayRow, TYPE_COLOR, TYPE_LABEL } from '../components/hyrox/DayRow';
 import { ProgressRing } from '../components/hyrox/ProgressRing';
-import { StationFoulCard } from '../components/hyrox/StationDiagram';
+import { StationShowcase } from '../components/hyrox/StationShowcase';
 import {
   buildPersonalDays, WEEKS_BY_TIER, TARGETS_BY_TIER, TIER_LABEL, TIER_RECOVERY_FLOOR, WEEKDAYS,
   phaseOf, RULES, SHOP, STATIONS, STATION_FOULS, RACE_DAY, fmtDate, pretty, makeICS, START, WEEK19,
@@ -894,12 +894,8 @@ export default function Hyrox() {
           <div className="text-xs text-secondary mb-2">
             Common Hyrox judging standards — worth a final check against the official rulebook before race day, since penalty specifics can change season to season.
           </div>
-          <div className="rounded-lg p-3.5 mb-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
-            {STATION_FOULS.map(([station, fouls]) => (
-              <StationFoulCard key={station} station={station} fouls={fouls} />
-            ))}
-          </div>
-          <div className="text-base font-black text-primary mb-2">STILL TO BUY</div>
+          <StationShowcase stations={STATION_FOULS} />
+          <div className="text-base font-black text-primary mb-2 mt-4">STILL TO BUY</div>
           <div className="rounded-lg p-3.5" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
             {SHOP.map((s) => {
               const key = 'shop:' + s;

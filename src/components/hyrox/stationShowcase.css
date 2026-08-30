@@ -1,0 +1,142 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Barlow:wght@400;500;600;700&display=swap');
+
+.station-showcase {
+  /* Break out of the tab's max-w-3xl column to the true viewport edge,
+     without ever creating horizontal overflow — width is derived from
+     100vw, not from the (narrower) parent. */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+.station-row {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.station-row:last-child {
+  border-bottom: none;
+}
+
+.station-row__media {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: #000;
+}
+
+.station-row__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: grayscale(1) contrast(1.08);
+  transform: scale(1.001); /* avoids a 1px seam from the filter on some GPUs */
+}
+
+.station-row__text {
+  padding: 2rem 1.5rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.station-row__eyebrow {
+  font-family: 'Barlow', 'Inter', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
+  margin-bottom: 0.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.station-row__index {
+  color: #E03131;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.station-row__title {
+  font-family: 'Archivo Black', 'Barlow', sans-serif;
+  font-size: clamp(1.75rem, 6vw, 2.75rem);
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  margin: 0 0 1.1rem;
+  text-wrap: balance;
+}
+
+.station-row__fouls {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  max-width: 46ch;
+}
+
+.station-row__fouls li {
+  font-family: 'Barlow', 'Inter', sans-serif;
+  font-size: 0.98rem;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  padding-left: 0.9rem;
+  border-left: 2px solid #E03131;
+}
+
+/* Desktop and up: alternating side-by-side rows, photo bleeding to the
+   true screen edge on its side while text keeps a readable inset. */
+@media (min-width: 860px) {
+  .station-row {
+    flex-direction: row;
+    min-height: 34rem;
+  }
+
+  .station-row[data-side='left'] {
+    flex-direction: row-reverse;
+  }
+
+  .station-row__media {
+    width: 56%;
+    aspect-ratio: auto;
+    height: auto;
+  }
+
+  .station-row__text {
+    width: 44%;
+    padding: 3rem 4rem;
+  }
+
+  .station-row[data-side='right'] .station-row__text {
+    padding-left: 3.5rem;
+    padding-right: 4.5rem;
+  }
+
+  .station-row[data-side='left'] .station-row__text {
+    padding-left: 4.5rem;
+    padding-right: 3.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .station-row__media img {
+    transition: transform 0.6s ease;
+  }
+
+  @media (hover: hover) {
+    .station-row__media:hover img {
+      transform: scale(1.03);
+    }
+  }
+}
