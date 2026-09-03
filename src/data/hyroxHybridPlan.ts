@@ -81,7 +81,8 @@ const paceFactor = (targetTotalSeconds: number) => targetTotalSeconds / HYBRID_B
 //  Tue: 'run' (threshold running is the day's defining stimulus)
 //  Wed: 'strength' (Upper B, no running)
 //  Thu: 'run' (pure aerobic engine)
-//  Fri: 'run' (speed work is the point; physique pump is a short finisher)
+//  Fri: 'run' (speed work is the point; station work is a short finisher —
+//       deliberately NOT a 3rd upper-body session, see STATION_WORK_BLOCK)
 //  Sat: 'sim' (compromised running + stations, same convention as Doubles)
 //  Sun: 'rest'
 
@@ -117,7 +118,9 @@ const UPPER_A_BLOCKS: HyroxActivityBlock[] = [
       { name: 'Lat Pulldown', prescription: '3 × 8–12' },
       { name: 'Cable Lateral Raise', prescription: '4 × 12–20' },
       { name: 'Rear-Delt Fly', prescription: '3 × 15–20' },
+      { name: 'Straight-Arm Pulldown', prescription: '2 × 12–15' },
       { name: 'Triceps Pressdown', prescription: '3 × 10–15' },
+      { name: 'EZ-Bar Curl', prescription: '3 × 10–12' },
     ],
   },
 ];
@@ -171,31 +174,43 @@ const THRESHOLD_BANDS: ThresholdBand[] = [
   },
 ];
 
-const PHYSIQUE_PUMP_LINES = ['2–3 sets each: lateral raises, rear delts, chest, lats, biceps, triceps', 'No leg work'];
+// Real HYROX movements on home-gym substitutes (same hacks as
+// HYBRID_HOME_GYM_SUBS) — technique/skill work, not a 3rd hypertrophy
+// session. Deliberately moderate effort: the point is groove and pacing
+// under mild fatigue after the run, not to add another set of near-failure
+// work on top of Monday + Wednesday.
+const STATION_WORK_BLOCK: HyroxActivityBlock = {
+  label: 'STATION WORK', tag: 'SIM', lines: ['Technique focus, moderate effort — not to failure'], exercises: [
+    { name: 'Wall Balls (light squat-to-press)', prescription: '3 × 15' },
+    { name: 'Sandbag / loaded lunges', prescription: '3 × 20m' },
+    { name: 'Sled-pull rope (cable stack)', prescription: '3 × 20m' },
+    { name: 'Burpee Broad Jumps', prescription: '2 × 10' },
+  ],
+};
 interface SpeedBand { minWeeksOut: number; title: string; blocks: HyroxActivityBlock[]; }
 const SPEED_BANDS: SpeedBand[] = [
   {
     minWeeksOut: 12, title: 'Speed Work — Phase 1', blocks: [
       { label: 'SPEED', tag: 'RUN', lines: ['6 × 400m, controlled'] },
-      { label: 'PHYSIQUE PUMP', tag: 'LIFT', lines: PHYSIQUE_PUMP_LINES },
+      STATION_WORK_BLOCK,
     ],
   },
   {
     minWeeksOut: 8, title: 'Speed Work — Phase 2', blocks: [
       { label: 'SPEED', tag: 'RUN', lines: ['5 × 800m'] },
-      { label: 'PHYSIQUE PUMP', tag: 'LIFT', lines: PHYSIQUE_PUMP_LINES },
+      STATION_WORK_BLOCK,
     ],
   },
   {
     minWeeksOut: 4, title: 'Speed Work — Phase 3', blocks: [
       { label: 'SPEED', tag: 'RUN', lines: ['5–6 × 1km', '60–90s easy recovery'] },
-      { label: 'PHYSIQUE PUMP', tag: 'LIFT', lines: PHYSIQUE_PUMP_LINES },
+      STATION_WORK_BLOCK,
     ],
   },
   {
     minWeeksOut: -99, title: 'HYROX Running Speed', blocks: [
       { label: 'SPEED', tag: 'RUN', lines: ['6 × 1km @ 3:55–4:00/km', '60–90s easy recovery — final reps still controlled'] },
-      { label: 'PHYSIQUE PUMP', tag: 'LIFT', lines: PHYSIQUE_PUMP_LINES },
+      STATION_WORK_BLOCK,
     ],
   },
 ];
