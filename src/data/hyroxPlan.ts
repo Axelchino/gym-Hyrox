@@ -1,5 +1,5 @@
 import type {
-  DaySlot, HyroxDay, HyroxPhase, HyroxWeek, PillarDayMap, RecoveryChoices, RecoveryOption,
+  DaySlot, HyroxActivityBlock, HyroxDay, HyroxPhase, HyroxWeek, PillarDayMap, RecoveryChoices, RecoveryOption,
 } from '../types/hyrox';
 import { DEFAULT_PILLAR_DAY_MAP, DEFAULT_RECOVERY_CHOICES } from '../types/hyrox';
 
@@ -622,7 +622,25 @@ export const STATION_FOULS: [string, StationFoul[]][] = [
 ];
 
 /* ================= ICS ================= */
-const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,');
+// Order matters: backslash-doubling has to happen before the \n
+// replacement adds its own backslash, or that new backslash would get
+// doubled too. A bare newline inside a property value (instead of the
+// literal two-character "\n" escape) breaks the file structure — most
+// parsers read it as the start of a new property.
+const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+
+// Structured blocks -> a real multi-line description, one block per
+// paragraph, exercises one per line — calendar apps render the escaped
+// "\n" back into actual line breaks, so this reads as a real card, not
+// the old run-on sentence.
+function blocksToMultilineText(blocks: HyroxActivityBlock[]): string {
+  return blocks.map((b) => {
+    const rows = [...(b.lines ?? [])];
+    if (b.exercises) rows.push(...b.exercises.map((e) => `${e.name} — ${e.prescription}`));
+    return [b.label, ...rows.map((r) => `  ${r}`)].join('\n');
+  }).join('\n\n');
+}
+
 export function makeICS(days: HyroxDay[], times: Record<string, string>): string {
   // Required by RFC 5545 on every VEVENT — some calendar apps (Google
   // Calendar's "Unable to launch event" among them) refuse to open
@@ -648,9 +666,10 @@ export function makeICS(days: HyroxDay[], times: Record<string, string>): string
     const end = `${String(Math.floor(endMinutesOfDay / 60)).padStart(2, '0')}${String(endMinutesOfDay % 60).padStart(2, '0')}`;
     const ds = d.date.replace(/-/g, '');
     const endDs = endDayOffset > 0 ? fmtDate(addDays(new Date(d.date + 'T00:00:00'), endDayOffset)).replace(/-/g, '') : ds;
+    const description = d.blocks?.length ? blocksToMultilineText(d.blocks) : (d.detail || '');
     lines.push('BEGIN:VEVENT', `UID:hyrox-${d.date}@planner`, `DTSTAMP:${dtstamp}`, `DTSTART:${ds}T${t}00`, `DTEND:${endDs}T${end}00`,
       `SUMMARY:${esc((d.type === 'race' ? '' : `HYROX W${d.week}: `) + d.title)}`,
-      `DESCRIPTION:${esc(d.detail || '')}`, 'END:VEVENT');
+      `DESCRIPTION:${esc(description)}`, 'END:VEVENT');
   });
   lines.push('END:VCALENDAR');
   return lines.join('\r\n');

@@ -8,14 +8,14 @@ import { useHyroxGuestProgress } from '../hooks/useHyroxGuestProgress';
 import { useHyroxGroup, useInvalidateHyroxGroup } from '../hooks/useHyroxGroup';
 import { createGroup, joinGroup, leaveGroup, isHyroxAdmin } from '../services/hyroxService';
 import { TimeWheelPicker } from '../components/hyrox/TimeWheelPicker';
-import { DayRow, TYPE_COLOR, TYPE_LABEL } from '../components/hyrox/DayRow';
+import { ActivityBlocks, DayRow, TYPE_COLOR, TYPE_LABEL } from '../components/hyrox/DayRow';
 import { ProgressRing } from '../components/hyrox/ProgressRing';
 import { StationShowcase } from '../components/hyrox/StationShowcase';
 import { StationBenchmarkCurve, parseMMSS } from '../components/hyrox/StationBenchmarkCurve';
 import { HyroxOnboarding } from '../components/hyrox/HyroxOnboarding';
 import { STATIONS, WEEKDAYS, fmtDate, pretty, makeICS, STATION_FOULS } from '../data/hyroxPlan';
 import {
-  buildHybridPersonalDays, hybridTargetsForTime, hybridWeeklyRunningKm,
+  buildHybridPersonalDays, hybridTargetsForTime, hybridWeeklyRunningKm, hybridPhaseLabel,
   HYBRID_BASELINE_SECONDS, HYBRID_MIN_SECONDS, HYBRID_MAX_SECONDS, formatMMSS,
   HYBRID_HYPERTROPHY_VOLUME, HYBRID_PHYSIQUE_PRIORITIES, HYBRID_HOME_GYM_SUBS, HYBRID_SUBS_NOTE,
   HYBRID_ADJUSTMENT_SYSTEM, HYBRID_BENCHMARK_EVENTS, HYBRID_FRESH_5K_BENCHMARKS,
@@ -25,13 +25,6 @@ import { DEFAULT_RACE_DATE } from '../types/hyrox';
 type Tab = 'today' | 'plan' | 'track' | 'group' | 'race' | 'setup';
 
 const QUICK_TARGETS = [3540, 3720, 3900, 4200]; // 59:00, 62:00, 65:00, 70:00
-
-function weeksOutLabel(weeksOut: number): string {
-  if (weeksOut <= 1) return 'Race / Taper';
-  if (weeksOut <= 5) return 'Peak';
-  if (weeksOut <= 12) return 'Build';
-  return 'Base';
-}
 
 export default function HyroxHybrid() {
   const { user, isGuest } = useAuth();
@@ -275,11 +268,16 @@ export default function HyroxHybrid() {
         <div className="no-print">
           <div className="rounded-lg p-4" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
             <div className="flex justify-between items-baseline">
-              <span className="text-xs text-secondary font-mono">{pretty(today.date)} · WEEK {today.week} · {weeksOutLabel(curWeeksOut)}</span>
+              <span className="text-xs text-secondary font-mono">{pretty(today.date)} · WEEK {today.week}</span>
               <span className="badge-chip text-[10px] font-bold px-1.5 py-0.5 rounded text-white" style={{ background: TYPE_COLOR[today.type] }}>{TYPE_LABEL[today.type]}</span>
             </div>
-            <div className="text-2xl font-black text-primary my-2">{today.title}</div>
-            {today.detail && <div className="text-sm text-secondary">{today.detail}</div>}
+            <div className="text-2xl font-black text-primary mt-2">{today.title}</div>
+            <div className="text-[11px] font-bold tracking-wide text-secondary mt-0.5">
+              {hybridPhaseLabel(curWeeksOut).toUpperCase()}{today.blocks?.length ? ` · ${today.blocks.map((b) => b.tag).join(' + ')}` : ''}
+            </div>
+            {today.blocks?.length
+              ? <ActivityBlocks blocks={today.blocks} />
+              : today.detail && <div className="text-sm text-secondary mt-2">{today.detail}</div>}
             {today.type !== 'rest' && (
               <button
                 onClick={() => toggleDone(today.date)}
@@ -297,7 +295,7 @@ export default function HyroxHybrid() {
             </div>
             {[
               ['This week', hybridWeeklyRunningKm(curWeeksOut)],
-              ['Block', weeksOutLabel(curWeeksOut)],
+              ['Block', hybridPhaseLabel(curWeeksOut)],
             ].map(([l, v]) => (
               <div key={l} className="flex-1 rounded-lg p-2.5" style={{ background: tokens.surface.elevated, border: '1px solid var(--border-subtle)' }}>
                 <div className="text-lg font-black text-primary">{v}</div>
@@ -307,9 +305,9 @@ export default function HyroxHybrid() {
           </div>
 
           <div className="mt-4">
-            <div className="text-sm font-black text-primary mb-1">NEXT 7 DAYS</div>
+            <div className="text-sm font-black text-primary mb-1">THIS WEEK</div>
             {days.filter((d) => d.date >= todayISO).slice(0, 7).map((d) => (
-              <DayRow key={d.date} d={d} showWeek done={!!done[d.date]} onToggle={toggleDone} />
+              <DayRow key={d.date} d={d} showWeek done={!!done[d.date]} onToggle={toggleDone} compact />
             ))}
           </div>
         </div>
@@ -365,11 +363,11 @@ export default function HyroxHybrid() {
                 >
                   <span>
                     <span className="font-bold text-primary">Week {w}</span>
-                    <span className="text-[11px] text-secondary font-mono ml-2">{firstDate ? new Date(firstDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''} · {weeksOutLabel(weeksOut)}</span>
+                    <span className="text-[11px] text-secondary font-mono ml-2">{firstDate ? new Date(firstDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''} · {hybridPhaseLabel(weeksOut)}</span>
                   </span>
                   <span className="text-primary">{open ? '−' : '+'}</span>
                 </button>
-                {printMode && <div className="font-black text-sm text-primary my-2">WEEK {w} · {weeksOutLabel(weeksOut)}</div>}
+                {printMode && <div className="font-black text-sm text-primary my-2">WEEK {w} · {hybridPhaseLabel(weeksOut)}</div>}
                 {open && <div className="px-1">{weekDays.map((d) => <DayRow key={d.date} d={d} done={!!done[d.date]} onToggle={toggleDone} printMode={printMode} />)}</div>}
               </div>
             );

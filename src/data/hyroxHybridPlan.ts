@@ -1,4 +1,4 @@
-import type { DaySlot, HyroxDay, HyroxDayType } from '../types/hyrox';
+import type { HyroxActivityBlock, HyroxDay, HyroxDayType } from '../types/hyrox';
 import { scalePaces, WEEKDAYS, START, fmtDate, DOW, mondayOf } from './hyroxPlan';
 
 /* =====================================================================
@@ -85,30 +85,138 @@ const paceFactor = (targetTotalSeconds: number) => targetTotalSeconds / HYBRID_B
 //  Sat: 'sim' (compromised running + stations, same convention as Doubles)
 //  Sun: 'rest'
 
-const UPPER_A: [string, string] = ['Easy Run + Upper A', '35–50 min easy run, conversational, then: Incline bench 4×6–8 · Cable fly 3×10–15 · Lat pulldown 3×8–12 · Cable lateral raise 4×12–20 · Rear-delt fly 3×15–20 · Triceps pressdown 3×10–15'];
-const UPPER_B: [string, string] = ['Upper B', 'No serious running. Incline press variation 3×8–12 · Cable row 4×8–12 · Lat pulldown 3×10–12 · Lateral raise 4×15–20 · Rear-delt fly 4×15–20 · Biceps 3×8–12 · Triceps 3×10–15'];
-const AEROBIC_ENGINE: [string, string] = ['Aerobic Engine', '50–70 min easy running. No stations afterward — aerobic efficiency, HR control, recovery capacity.'];
+/** Every string inside `lines`/`exercises` runs through scalePaces — a
+ * no-op for text without a "/km" token, so it's always safe to apply. */
+function scaleBlocks(blocks: HyroxActivityBlock[], factor: number): HyroxActivityBlock[] {
+  if (factor === 1) return blocks;
+  return blocks.map((b) => ({
+    ...b,
+    lines: b.lines?.map((l) => scalePaces(l, factor)),
+    exercises: b.exercises?.map((e) => ({ ...e, prescription: scalePaces(e.prescription, factor) })),
+  }));
+}
 
-interface ThresholdBand { minWeeksOut: number; title: string; detail: string; }
+/** Flat-text fallback derived from structured blocks — what `.detail`
+ * carries for anything that hasn't been updated to render `.blocks`
+ * directly, and the basis for the ICS description. */
+function blocksToText(blocks: HyroxActivityBlock[]): string {
+  return blocks.map((b) => {
+    const parts = [...(b.lines ?? [])];
+    if (b.exercises) parts.push(...b.exercises.map((e) => `${e.name} ${e.prescription}`));
+    return parts.length ? `${b.label}: ${parts.join(' · ')}` : b.label;
+  }).join(' — ');
+}
+
+const UPPER_A_TITLE = 'Easy Run + Upper A';
+const UPPER_A_BLOCKS: HyroxActivityBlock[] = [
+  { label: 'EASY RUN', tag: 'RUN', lines: ['35–50 min', 'Conversational pace', 'Easy effort / RPE 3–4'] },
+  {
+    label: 'UPPER A', tag: 'UPPER', exercises: [
+      { name: 'Incline Bench', prescription: '4 × 6–8' },
+      { name: 'Cable Fly', prescription: '3 × 10–15' },
+      { name: 'Lat Pulldown', prescription: '3 × 8–12' },
+      { name: 'Cable Lateral Raise', prescription: '4 × 12–20' },
+      { name: 'Rear-Delt Fly', prescription: '3 × 15–20' },
+      { name: 'Triceps Pressdown', prescription: '3 × 10–15' },
+    ],
+  },
+];
+
+const UPPER_B_TITLE = 'Upper B';
+const UPPER_B_BLOCKS: HyroxActivityBlock[] = [
+  {
+    label: 'UPPER B', tag: 'UPPER', lines: ['No serious running.'], exercises: [
+      { name: 'Incline Press (variation)', prescription: '3 × 8–12' },
+      { name: 'Cable Row', prescription: '4 × 8–12' },
+      { name: 'Lat Pulldown', prescription: '3 × 10–12' },
+      { name: 'Lateral Raise', prescription: '4 × 15–20' },
+      { name: 'Rear-Delt Fly', prescription: '4 × 15–20' },
+      { name: 'Biceps', prescription: '3 × 8–12' },
+      { name: 'Triceps', prescription: '3 × 10–15' },
+    ],
+  },
+];
+
+const AEROBIC_ENGINE_TITLE = 'Aerobic Engine';
+const AEROBIC_ENGINE_BLOCKS: HyroxActivityBlock[] = [
+  { label: 'AEROBIC ENGINE', tag: 'RUN', lines: ['50–70 min easy running', 'No stations afterward', 'Aerobic efficiency, HR control, recovery capacity'] },
+];
+
+const LEGS_EXERCISES = [
+  { name: 'Bulgarian Split Squat', prescription: '3 × 6–8/leg' },
+  { name: 'RDL', prescription: '3 × 6–8' },
+  { name: 'Weighted Step-Ups', prescription: '3 × 10/leg' },
+  { name: 'Calves', prescription: '3 × 10–15' },
+];
+
+interface ThresholdBand { minWeeksOut: number; title: string; blocks: HyroxActivityBlock[]; }
 const THRESHOLD_BANDS: ThresholdBand[] = [
-  { minWeeksOut: 8, title: 'Threshold + Legs', detail: '3×8 min threshold, 2 min easy recovery between efforts. Legs: Bulgarian split squat 3×6–8/leg · RDL 3×6–8 · weighted step-ups 3×10/leg · calves 3×10–15. Keep most work 1–2 RIR — running quality matters more than soreness.' },
-  { minWeeksOut: 4, title: 'Threshold + Legs', detail: 'Progressing toward 4×2km around threshold/race effort, 2 min easy recovery. Legs: Bulgarian split squat 3×6–8/leg · RDL 3×6–8 · weighted step-ups 3×10/leg · calves 3×10–15. Keep most work 1–2 RIR.' },
-  { minWeeksOut: -99, title: 'Threshold + Legs', detail: '4×2km around threshold/race effort, 2 min easy recovery. Legs: Bulgarian split squat 3×6–8/leg · RDL 3×6–8 · weighted step-ups 3×10/leg · calves 3×10–15. Keep most work 1–2 RIR.' },
+  {
+    minWeeksOut: 8, title: 'Threshold + Legs', blocks: [
+      { label: 'THRESHOLD', tag: 'RUN', lines: ['3 × 8 min @ threshold', '2 min easy recovery between efforts'] },
+      { label: 'LEGS', tag: 'LOWER', lines: ['Keep most work 1–2 RIR — running quality matters more than soreness'], exercises: LEGS_EXERCISES },
+    ],
+  },
+  {
+    minWeeksOut: 4, title: 'Threshold + Legs', blocks: [
+      { label: 'THRESHOLD', tag: 'RUN', lines: ['Progressing toward 4 × 2km @ threshold/race effort', '2 min easy recovery'] },
+      { label: 'LEGS', tag: 'LOWER', lines: ['Keep most work 1–2 RIR'], exercises: LEGS_EXERCISES },
+    ],
+  },
+  {
+    minWeeksOut: -99, title: 'Threshold + Legs', blocks: [
+      { label: 'THRESHOLD', tag: 'RUN', lines: ['4 × 2km @ threshold/race effort', '2 min easy recovery'] },
+      { label: 'LEGS', tag: 'LOWER', lines: ['Keep most work 1–2 RIR'], exercises: LEGS_EXERCISES },
+    ],
+  },
 ];
 
-interface SpeedBand { minWeeksOut: number; title: string; detail: string; }
+const PHYSIQUE_PUMP_LINES = ['2–3 sets each: lateral raises, rear delts, chest, lats, biceps, triceps', 'No leg work'];
+interface SpeedBand { minWeeksOut: number; title: string; blocks: HyroxActivityBlock[]; }
 const SPEED_BANDS: SpeedBand[] = [
-  { minWeeksOut: 12, title: 'Speed Work — Phase 1', detail: '6×400m, controlled. + short physique pump: 2–3 sets each of lateral raises, rear delts, chest, lats, biceps, triceps. No leg work.' },
-  { minWeeksOut: 8, title: 'Speed Work — Phase 2', detail: '5×800m. + short physique pump: 2–3 sets each of lateral raises, rear delts, chest, lats, biceps, triceps. No leg work.' },
-  { minWeeksOut: 4, title: 'Speed Work — Phase 3', detail: '5–6×1km, 60–90s easy recovery. + short physique pump: 2–3 sets each of lateral raises, rear delts, chest, lats, biceps, triceps. No leg work.' },
-  { minWeeksOut: -99, title: 'HYROX Running Speed', detail: '6×1km @ 3:55–4:00/km, 60–90s easy recovery — final reps still controlled. + short physique pump: 2–3 sets each of lateral raises, rear delts, chest, lats, biceps, triceps. No leg work.' },
+  {
+    minWeeksOut: 12, title: 'Speed Work — Phase 1', blocks: [
+      { label: 'SPEED', tag: 'RUN', lines: ['6 × 400m, controlled'] },
+      { label: 'PHYSIQUE PUMP', tag: 'LIFT', lines: PHYSIQUE_PUMP_LINES },
+    ],
+  },
+  {
+    minWeeksOut: 8, title: 'Speed Work — Phase 2', blocks: [
+      { label: 'SPEED', tag: 'RUN', lines: ['5 × 800m'] },
+      { label: 'PHYSIQUE PUMP', tag: 'LIFT', lines: PHYSIQUE_PUMP_LINES },
+    ],
+  },
+  {
+    minWeeksOut: 4, title: 'Speed Work — Phase 3', blocks: [
+      { label: 'SPEED', tag: 'RUN', lines: ['5–6 × 1km', '60–90s easy recovery'] },
+      { label: 'PHYSIQUE PUMP', tag: 'LIFT', lines: PHYSIQUE_PUMP_LINES },
+    ],
+  },
+  {
+    minWeeksOut: -99, title: 'HYROX Running Speed', blocks: [
+      { label: 'SPEED', tag: 'RUN', lines: ['6 × 1km @ 3:55–4:00/km', '60–90s easy recovery — final reps still controlled'] },
+      { label: 'PHYSIQUE PUMP', tag: 'LIFT', lines: PHYSIQUE_PUMP_LINES },
+    ],
+  },
 ];
 
-interface SaturdayBand { minWeeksOut: number; title: string; detail: string; }
+interface SaturdayBand { minWeeksOut: number; title: string; blocks: HyroxActivityBlock[]; }
 const SATURDAY_BANDS: SaturdayBand[] = [
-  { minWeeksOut: 12, title: 'HYROX Specific — Base Block', detail: '2–4 km of compromised running. Example: 1km run → step-up sled simulation → 1km run → burpee broad jumps → 1km run → farmer carry → 1km run → lunges.' },
-  { minWeeksOut: 6, title: 'HYROX Specific — Build Block', detail: '4–6 rounds of: 1km run + 1 HYROX station. Get access to real sled/SkiErg/rower/wall balls every 1–2 weeks if possible.' },
-  { minWeeksOut: -99, title: 'HYROX Specific — Peak Block', detail: '5–8 rounds of: 1km at target race effort + HYROX station. Goal: finish the station and settle back near race pace immediately — not to destroy yourself.' },
+  {
+    minWeeksOut: 12, title: 'HYROX Specific — Base Block', blocks: [
+      { label: 'SIMULATION', tag: 'SIM', lines: ['2–4 km of compromised running', 'Example: 1km run → step-up sled sim → 1km run → burpee broad jumps → 1km run → farmer carry → 1km run → lunges'] },
+    ],
+  },
+  {
+    minWeeksOut: 6, title: 'HYROX Specific — Build Block', blocks: [
+      { label: 'SIMULATION', tag: 'SIM', lines: ['4–6 rounds: 1km run + 1 HYROX station', 'Get access to real sled/SkiErg/rower/wall balls every 1–2 weeks if possible'] },
+    ],
+  },
+  {
+    minWeeksOut: -99, title: 'HYROX Specific — Peak Block', blocks: [
+      { label: 'SIMULATION', tag: 'SIM', lines: ['5–8 rounds: 1km @ target race effort + HYROX station', 'Goal: finish the station and settle back near race pace immediately — not to destroy yourself'] },
+    ],
+  },
 ];
 
 function pickBand<T extends { minWeeksOut: number }>(bands: T[], weeksOut: number): T {
@@ -124,14 +232,25 @@ export function hybridWeeklyRunningKm(weeksOut: number): string {
   return '18–24 km';
 }
 
-const RACE_TAPER_TEMPLATE: Record<number, DaySlot> = {
-  [-3]: ['run', 'Easy taper run', '25–30 min easy, a few strides. Volume dropping.'],
-  [-2]: ['run', 'Short primer', '15–20 min easy + a few short pickups at race effort. No soreness.'],
-  [-1]: ['rest', 'Rest + carbs', 'Walk only. Carb-load, hydrate, kit check, sleep priority.'],
-  0: ['race', '🏁 RACE DAY — HYROX', 'Carb breakfast ~3h pre. Dynamic warm-up + strides. Execute the race budget — settle back to target pace after every station.'],
-  1: ['rest', 'Recover', 'Walk, eat, celebrate.'],
-  2: ['rest', 'Recover', ''],
-  3: ['rest', 'Recover', ''],
+/** "Base" / "Build" / "Peak" / "Race / Taper" — shown in each day's meta
+ * line alongside its block tags. Shared with the page (imported there
+ * instead of duplicated) so the two never drift apart. */
+export function hybridPhaseLabel(weeksOut: number): string {
+  if (weeksOut <= 1) return 'Race / Taper';
+  if (weeksOut <= 5) return 'Peak';
+  if (weeksOut <= 12) return 'Build';
+  return 'Base';
+}
+
+interface RaceTaperEntry { type: HyroxDayType; title: string; blocks: HyroxActivityBlock[]; }
+const RACE_TAPER_TEMPLATE: Record<number, RaceTaperEntry> = {
+  [-3]: { type: 'run', title: 'Easy taper run', blocks: [{ label: 'TAPER RUN', tag: 'RUN', lines: ['25–30 min easy', 'A few strides', 'Volume dropping'] }] },
+  [-2]: { type: 'run', title: 'Short primer', blocks: [{ label: 'PRIMER', tag: 'RUN', lines: ['15–20 min easy', 'A few short pickups at race effort', 'No soreness'] }] },
+  [-1]: { type: 'rest', title: 'Rest + carbs', blocks: [{ label: 'REST', tag: 'REST', lines: ['Walk only', 'Carb-load, hydrate, kit check', 'Sleep priority'] }] },
+  0: { type: 'race', title: '🏁 RACE DAY — HYROX', blocks: [{ label: 'RACE DAY', tag: 'RACE', lines: ['Carb breakfast ~3h pre', 'Dynamic warm-up + strides', 'Execute the race budget — settle back to target pace after every station'] }] },
+  1: { type: 'rest', title: 'Recover', blocks: [{ label: 'RECOVERY', tag: 'REST', lines: ['Walk, eat, celebrate'] }] },
+  2: { type: 'rest', title: 'Recover', blocks: [] },
+  3: { type: 'rest', title: 'Recover', blocks: [] },
 };
 
 /**
@@ -140,20 +259,21 @@ const RACE_TAPER_TEMPLATE: Record<number, DaySlot> = {
  * once inside the final ~3 days on either side of race day, the fixed
  * taper/race-day template takes over regardless of weekday role.
  */
-function buildHybridWeek(weeksOut: number, targetTotalSeconds: number): Record<string, DaySlot> {
+interface HybridDaySlot { type: HyroxDayType; title: string; blocks: HyroxActivityBlock[]; }
+function buildHybridWeek(weeksOut: number, targetTotalSeconds: number): Record<string, HybridDaySlot> {
   const factor = paceFactor(targetTotalSeconds);
   const threshold = pickBand(THRESHOLD_BANDS, weeksOut);
   const speed = pickBand(SPEED_BANDS, weeksOut);
   const saturday = pickBand(SATURDAY_BANDS, weeksOut);
 
   return {
-    Mon: ['strength', UPPER_A[0], UPPER_A[1]],
-    Tue: ['run', threshold.title, scalePaces(threshold.detail, factor)],
-    Wed: ['strength', UPPER_B[0], UPPER_B[1]],
-    Thu: ['run', AEROBIC_ENGINE[0], AEROBIC_ENGINE[1]],
-    Fri: ['run', speed.title, scalePaces(speed.detail, factor)],
-    Sat: ['sim', saturday.title, scalePaces(saturday.detail, factor)],
-    Sun: ['rest', 'Full Rest', 'Walk, eat, sleep, mobility if desired. No workout.'],
+    Mon: { type: 'strength', title: UPPER_A_TITLE, blocks: UPPER_A_BLOCKS },
+    Tue: { type: 'run', title: threshold.title, blocks: scaleBlocks(threshold.blocks, factor) },
+    Wed: { type: 'strength', title: UPPER_B_TITLE, blocks: UPPER_B_BLOCKS },
+    Thu: { type: 'run', title: AEROBIC_ENGINE_TITLE, blocks: AEROBIC_ENGINE_BLOCKS },
+    Fri: { type: 'run', title: speed.title, blocks: scaleBlocks(speed.blocks, factor) },
+    Sat: { type: 'sim', title: saturday.title, blocks: scaleBlocks(saturday.blocks, factor) },
+    Sun: { type: 'rest', title: 'Full Rest', blocks: [{ label: 'REST', tag: 'REST', lines: ['Walk, eat, sleep, mobility if desired', 'No workout'] }] },
   };
 }
 
@@ -175,6 +295,7 @@ export function buildHybridPersonalDays(raceDate: string, targetTotalSeconds: nu
     const weekStartMs = cursor.getTime();
     const weeksOut = Math.ceil((raceMs - weekStartMs) / (7 * 86400000));
     const weekContent = buildHybridWeek(weeksOut, targetTotalSeconds);
+    const weekPhase = hybridPhaseLabel(weeksOut);
 
     for (let i = 0; i < 7; i++) {
       const dt = new Date(cursor);
@@ -185,14 +306,19 @@ export function buildHybridPersonalDays(raceDate: string, targetTotalSeconds: nu
       const dw = WEEKDAYS[i];
       const offsetFromRace = Math.round((dt.getTime() - raceMs) / 86400000);
 
-      let slot: DaySlot;
+      let type: HyroxDayType;
+      let title: string;
+      let blocks: HyroxActivityBlock[];
+      let phase = weekPhase;
       if (offsetFromRace >= -3 && offsetFromRace <= 3) {
-        slot = RACE_TAPER_TEMPLATE[Math.max(-3, Math.min(3, offsetFromRace))];
+        const entry = RACE_TAPER_TEMPLATE[Math.max(-3, Math.min(3, offsetFromRace))];
+        type = entry.type; title = entry.title; blocks = entry.blocks;
+        phase = 'Race / Taper';
       } else {
-        slot = weekContent[dw];
+        const slot = weekContent[dw];
+        type = slot.type; title = slot.title; blocks = slot.blocks;
       }
-      const [type, title, detail] = slot;
-      days.push({ date: iso, week, dow: dw, type: type as HyroxDayType, title, detail });
+      days.push({ date: iso, week, dow: dw, type, title, detail: blocksToText(blocks), blocks, phase });
     }
     cursor.setDate(cursor.getDate() + 7);
     week++;

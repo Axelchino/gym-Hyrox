@@ -1,12 +1,25 @@
 export type HyroxDayType = 'run' | 'strength' | 'gym' | 'rest' | 'sim' | 'race';
 
+// One labeled section of a day's content — "EASY RUN", "UPPER A", etc.
+// `lines` is freeform facts (duration, pace, effort), one per row;
+// `exercises` is a real list (name + sets×reps), one row per movement.
+// A block can carry both (context lines above an exercise list).
+export interface HyroxActivityBlock {
+  label: string;
+  tag: string; // short token for the day's meta line, e.g. "RUN", "UPPER", "LOWER", "SIM"
+  lines?: string[];
+  exercises?: { name: string; prescription: string }[];
+}
+
 export interface HyroxDay {
   date: string; // YYYY-MM-DD
   week: number; // 0 = prep week
   dow: string;
   type: HyroxDayType;
   title: string;
-  detail: string;
+  detail: string; // flat-text fallback — always present, derived from `blocks` when structured content exists
+  blocks?: HyroxActivityBlock[]; // structured content (currently Hybrid plan only); UI shows this instead of `detail` when present
+  phase?: string; // "Base" / "Build" / "Peak" / "Race / Taper" — shown in the meta line alongside the block tags
 }
 
 export interface HyroxPhase {
