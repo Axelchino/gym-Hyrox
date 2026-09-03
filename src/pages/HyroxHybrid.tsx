@@ -276,7 +276,7 @@ export default function HyroxHybrid() {
               {hybridPhaseLabel(curWeeksOut).toUpperCase()}{today.blocks?.length ? ` · ${today.blocks.map((b) => b.tag).join(' + ')}` : ''}
             </div>
             {today.blocks?.length
-              ? <ActivityBlocks blocks={today.blocks} />
+              ? <ActivityBlocks blocks={today.blocks} spacious />
               : today.detail && <div className="text-sm text-secondary mt-2">{today.detail}</div>}
             {today.type !== 'rest' && (
               <button

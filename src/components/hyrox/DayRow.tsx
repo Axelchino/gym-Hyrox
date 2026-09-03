@@ -10,10 +10,10 @@ export const TYPE_LABEL: Record<HyroxDayType, string> = {
 
 // Renders a day's structured content — shared by DayRow and the Today
 // tab's headline card, so a session looks the same wherever it shows up.
-export function ActivityBlocks({ blocks }: { blocks: HyroxActivityBlock[] }) {
+export function ActivityBlocks({ blocks, spacious }: { blocks: HyroxActivityBlock[]; spacious?: boolean }) {
   if (!blocks.length) return null;
   return (
-    <div className="mt-2 space-y-2.5">
+    <div className={spacious ? 'mt-4 space-y-4' : 'mt-2 space-y-4'}>
       {blocks.map((b, i) => (
         <div key={i}>
           <div className="text-[10px] font-bold tracking-wide text-secondary mb-1">{b.label}</div>
